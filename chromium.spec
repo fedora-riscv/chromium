@@ -109,8 +109,8 @@ BuildRequires:  libicu-devel >= 5.4
 %global majorversion 59
 
 Name:		chromium%{chromium_channel}
-Version:	%{majorversion}.0.3071.104
-Release:	1%{?dist}
+Version:	%{majorversion}.0.3071.109
+Release:	5%{?dist}
 Summary:	A WebKit (Blink) powered web browser
 Url:		http://www.chromium.org/Home
 License:	BSD and LGPLv2+ and ASL 2.0 and IJG and MIT and GPLv2+ and ISC and OpenSSL and (MPLv1.1 or GPLv2 or LGPLv2)
@@ -1093,8 +1093,12 @@ cp -a remoting/* %{buildroot}%{_sysconfdir}/chromium/native-messaging-hosts/
 for i in %{buildroot}%{_sysconfdir}/chromium/native-messaging-hosts/*.json; do
 	sed -i 's|/opt/google/chrome-remote-desktop|%{crd_path}|g' $i
 done
-pushd %{buildroot}%{_sysconfdir}/opt/chrome/
-ln -s ../../chromium/native-messaging-hosts native-messaging-hosts
+mkdir -p %{buildroot}%{_sysconfdir}/opt/chrome/native-messaging-hosts
+pushd %{buildroot}%{_sysconfdir}/opt/chrome/native-messaging-hosts
+for i in ../../../chromium/native-messaging-hosts/*; do
+# rpm gets unhappy when we symlink here
+	cp -a $i .
+done
 popd
 
 mkdir -p %{buildroot}/var/lib/chrome-remote-desktop
@@ -1483,6 +1487,14 @@ update-desktop-database &> /dev/null || :
 %posttrans
 gtk-update-icon-cache %{_datadir}/icons/hicolor &>/dev/null || :
 
+%pretrans -n chrome-remote-desktop -p <lua> 
+path = "/etc/opt/chrome/native-messaging-hosts"
+st = posix.stat(path)
+if st and st.type == "link" then
+  os.remove(path)
+end
+
+
 %pre -n chrome-remote-desktop
 getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-desktop
 
@@ -1499,6 +1511,9 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %doc AUTHORS
 %license LICENSE
 %config %{_sysconfdir}/%{name}/
+%dir %{_sysconfdir}/%{name}/native-messaging-hosts
+# This is chrome-remote-desktop stuff
+%exclude %{_sysconfdir}/%{name}/native-messaging-hosts/*
 %{_bindir}/%{chromium_browser_channel}
 %dir %{chromium_path}
 %{chromium_path}/*.bin
@@ -1608,7 +1623,7 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{crd_path}/native-messaging-host
 %{crd_path}/remote-assistance-host
 %{_sysconfdir}/pam.d/chrome-remote-desktop
-%{_sysconfdir}/chromium/native-messaging-hosts/
+%{_sysconfdir}/chromium/native-messaging-hosts/*
 %{_sysconfdir}/opt/chrome/
 %{crd_path}/remoting_locales/
 %{crd_path}/start-host
@@ -1627,6 +1642,24 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/chromedriver
 
 %changelog
+* Mon Jun 26 2017 Tom Callaway <spot@fedoraproject.org> 59.0.3071.109-5
+- fix path in pretrans scriptlet
+
+* Fri Jun 23 2017 Tom Callaway <spot@fedoraproject.org> 59.0.3071.109-4
+- copy files into /etc/opt/chrome/native-messaging-hosts instead of making symlinks
+  this results in duplicate copies of the same files, but eh. making rpm happy.
+
+* Fri Jun 23 2017 Tom Callaway <spot@fedoraproject.org> 59.0.3071.109-3
+- use pretrans scriptlet to remove symlink on /etc/opt/chrome/native-messaging-hosts
+  (it is now a directory)
+
+* Thu Jun 22 2017 Tom Callaway <spot@fedoraproject.org> 59.0.3071.109-2
+- fix duplication between chrome-remote-desktop and chromium
+
+* Thu Jun 22 2017 Tom Callaway <spot@fedoraproject.org> 59.0.3071.109-1
+- update to .109
+- fix native-messaging-hosts dir to be a true dir instead of a symlink
+
 * Fri Jun 16 2017 Tom Callaway <spot@fedoraproject.org> 59.0.3071.104-1
 - update to .104
 
