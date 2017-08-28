@@ -115,7 +115,7 @@ Name:		chromium%{chromium_channel}%{?freeworld:-freeworld}
 %else
 Name:		chromium%{chromium_channel}
 %endif
-Version:	%{majorversion}.0.3112.101
+Version:	%{majorversion}.0.3112.113
 Release:	1%{?dist}
 Summary:	A WebKit (Blink) powered web browser
 Url:		http://www.chromium.org/Home
@@ -202,6 +202,11 @@ Patch46:	chromium-60.0.3112.90-init-list-hack.patch
 Patch47:	chromium-60.0.3112.90-vulkan-force-c99.patch
 # https://chromium.googlesource.com/chromium/src/+/9c77470ff34bac937ceb765a27cee1703f0f2426
 Patch48:	chromium-60.0.3112.101-camfix.patch
+# Fix mp3 for aarch64
+Patch49:	chromium-60.0.3112.101-fix-ffmpeg-aarch64.patch
+# Fix libavutil include pathing to find arch specific timer.h
+# For some reason, this only fails on aarch64. No idea why.
+Patch50:	chromium-60.0.3112.113-libavutil-timer-include-path-fix.patch
 
 ### Chromium Tests Patches ###
 Patch100:	chromium-46.0.2490.86-use_system_opus.patch
@@ -375,6 +380,8 @@ BuildRequires:	pkgconfig(gnome-keyring-1)
 # remote desktop needs this
 BuildRequires:	pam-devel
 BuildRequires:	systemd
+# using the built from source version on aarch64
+BuildRequires:	ninja-build
 
 # We pick up an automatic requires on the library, but we need the version check
 # because the nss shared library is unversioned.
@@ -411,7 +418,7 @@ Provides:	chromium-libs = %{version}-%{release}
 Obsoletes:	chromium-libs <= %{version}-%{release}
 %endif
 
-ExclusiveArch:	x86_64 i686
+ExclusiveArch:	x86_64 i686 aarch64
 
 # Bundled bits (I'm sure I've missed some)
 Provides: bundled(angle) = 2422
@@ -549,7 +556,11 @@ Requires(post): systemd
 Requires(preun): systemd
 Requires(postun): systemd
 Requires: xorg-x11-server-Xvfb
+%if 0%{?rhel} == 7
+Requires: python-psutil
+%else
 Requires: python2-psutil
+%endif
 %if 0%{?shared}
 Requires: chromium-libs%{_isa} = %{version}-%{release}
 %endif
@@ -619,6 +630,7 @@ udev.
 # Do not apply mp3 change
 %else
 %patch34 -p1 -b .mp3
+%patch49 -p1 -b .aarch64
 %endif
 %patch36 -p1 -b .revert
 %patch37 -p1 -b .ffmpeg-stdatomic
@@ -634,6 +646,8 @@ udev.
 %patch47 -p1 -b .c99
 %endif
 %patch48 -p1 -b .camfix
+%patch50 -p1 -b .pathfix
+
 
 ### Chromium Tests Patches ###
 %patch100 -p1 -b .use_system_opus
@@ -747,7 +761,7 @@ popd
 # Core defines are flags that are true for both the browser and headless.
 CHROMIUM_CORE_GN_DEFINES=""
 CHROMIUM_CORE_GN_DEFINES+=' is_debug=false'
-%ifarch x86_64
+%ifarch x86_64 aarch64
 CHROMIUM_CORE_GN_DEFINES+=' system_libdir="lib64"'
 %endif
 CHROMIUM_CORE_GN_DEFINES+=' google_api_key="%{api_key}" google_default_client_id="%{default_client_id}" google_default_client_secret="%{default_client_secret}"'
@@ -758,6 +772,9 @@ CHROMIUM_CORE_GN_DEFINES+=' ffmpeg_branding="ChromeOS" proprietary_codecs=true'
 CHROMIUM_CORE_GN_DEFINES+=' ffmpeg_branding="Chromium" proprietary_codecs=false'
 %endif
 CHROMIUM_CORE_GN_DEFINES+=' treat_warnings_as_errors=false'
+%ifarch aarch64
+CHROMIUM_CORE_GN_DEFINES+=' target_cpu="arm64"'
+%endif
 export CHROMIUM_CORE_GN_DEFINES
 
 CHROMIUM_BROWSER_GN_DEFINES=""
@@ -1001,6 +1018,18 @@ build/linux/unbundle/replace_gn_files.py --system-libraries \
 	yasm \
 	zlib
 
+# fix arm gcc
+sed -i 's|arm-linux-gnueabihf-|arm-linux-gnu-|g' build/toolchain/linux/BUILD.gn
+
+%ifarch aarch64
+# We don't need to cross compile while building on an aarch64 system.
+sed -i 's|aarch64-linux-gnu-||g' build/toolchain/linux/BUILD.gn
+
+# Correct the ninja file to check for aarch64, not just x86.
+sed -i '/${LONG_BIT}/ a \      aarch64)\' ../depot_tools/ninja
+sed -i '/aarch64)/ a \        exec "/usr/bin/ninja-build" "$@";;\' ../depot_tools/ninja
+%endif
+
 tools/gn/bootstrap/bootstrap.py -v --gn-gen-args "$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES"
 %{target}/gn gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES" %{target}
 
@@ -1025,9 +1054,6 @@ sed '14i#define WIDEVINE_CDM_VERSION_STRING "Something fresh"' -i "third_party/w
 # Hard code extra version
 FILE=chrome/common/channel_info_posix.cc
 sed -i.orig -e 's/getenv("CHROME_VERSION_EXTRA")/"Fedora Project"/' $FILE
-
-# fix arm gcc
-sed -i 's|arm-linux-gnueabihf-|arm-linux-gnu-|g' build/toolchain/linux/BUILD.gn
 
 %build
 
@@ -1841,6 +1867,16 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 
 
 %changelog
+* Thu Aug 23 2017 Tom Callaway <spot@fedoraproject.org> 60.0.3112.113-1
+- fix ffmpeg clean script to not delete aarch64 file
+- update to 60.0.3112.113
+
+* Wed Aug 23 2017 Tom Callaway <spot@fedoraproject.org> 60.0.3112.101-3
+- apply aarch64 fixes from Ryan Blakely <rblakely@redhat.com>
+
+* Thu Aug 17 2017 Tom Callaway <spot@fedoraproject.org> 60.0.3112.101-2
+- fix dep issue with chrome-remote-desktop on el7
+
 * Wed Aug 16 2017 Tom Callaway <spot@fedoraproject.org> 60.0.3112.101-1
 - update to 60.0.3112.101
 - apply upstream fix for cameras which report zero resolution formats
