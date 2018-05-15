@@ -136,7 +136,7 @@ Name:		chromium%{chromium_channel}%{?freeworld:-freeworld}
 Name:		chromium%{chromium_channel}
 %endif
 Version:	%{majorversion}.0.3359.170
-Release:	1%{?dist}
+Release:	2%{?dist}
 Summary:	A WebKit (Blink) powered web browser
 Url:		http://www.chromium.org/Home
 License:	BSD and LGPLv2+ and ASL 2.0 and IJG and MIT and GPLv2+ and ISC and OpenSSL and (MPLv1.1 or GPLv2 or LGPLv2)
@@ -244,6 +244,10 @@ Patch95:	chromium-65.0.3325.146-GCC-IDB-methods-String-renamed-to-GetString.patc
 Patch96:	chromium-66.0.3359.117-GCC-do-not-use-initializer-list-for-NoDestructor-of-.patch
 # https://chromium.googlesource.com/chromium/src/+/b84682f31dc99b9c90f5a04947075815697c68d9%5E%21/#F0
 Patch97:	chromium-66.0.3359.139-arm-init-fix.patch
+# GCC8 has changed the alignof operator to return the minimal alignment required by the target ABI
+# instead of the preferred alignment. This means int64_t is now 4 on i686 (instead of 8).
+# Use __alignof__ to get the value we expect (and chromium checks for).
+Patch98:	chromium-66.0.3359.170-gcc8-alignof.patch
 
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
@@ -727,6 +731,7 @@ udev.
 %patch95 -p1 -b .gcc-getstring
 %patch96 -p1 -b .flatsetfix
 %patch97 -p1 -b .arm-init-fix
+%patch98 -p1 -b .gcc8-alignof
 
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
@@ -1250,7 +1255,9 @@ cp -a nacl_helper* *.nexe pnacl tls_edit %{buildroot}%{chromium_path}
 chmod -x %{buildroot}%{chromium_path}/nacl_helper_bootstrap* *.nexe
 %endif
 cp -a protoc pyproto %{buildroot}%{chromium_path}
+%ifarch x86_64 i686
 cp -a swiftshader %{buildroot}%{chromium_path}
+%endif
 cp -a chrome %{buildroot}%{chromium_path}/%{chromium_browser_channel}
 cp -a chrome_sandbox %{buildroot}%{chromium_path}/chrome-sandbox
 cp -a ../../chrome/app/resources/manpage.1.in %{buildroot}%{_mandir}/man1/%{chromium_browser_channel}.1
@@ -1484,7 +1491,9 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/icudtl.dat
 %{chromium_path}/%{chromium_browser_channel}
 %{chromium_path}/%{chromium_browser_channel}.sh
+%ifarch x86_64 i686
 %{chromium_path}/swiftshader/
+%endif
 %if 0%{?nacl}
 %{chromium_path}/nacl_helper*
 %{chromium_path}/*.nexe
@@ -1619,6 +1628,10 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 
 
 %changelog
+* Tue May 15 2018 Tom Callaway <spot@fedoraproject.org> 66.0.3359.170-2
+- only x86_64 i686 have swiftshader
+- fix gcc8 alignof issue on i686
+
 * Mon May 14 2018 Tom Callaway <spot@fedoraproject.org> 66.0.3359.170-1
 - update to 66.0.3359.170
 - include swiftshader files
