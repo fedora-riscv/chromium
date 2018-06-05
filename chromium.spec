@@ -29,9 +29,13 @@
 # We don't want any libs in these directories to generate Provides
 # Requires is trickier. 
 
-%global __provides_exclude_from %{chromium_path}/.*\\.so|%{chromium_path}/lib/.*\\.so
-%global privlibs libaccessibility|libanimation|libaura_extra|libaura|libbase_i18n|libbase|libbindings_base|libbindings|libblink_android_mojo_bindings_shared|libblink_common|libblink_controller|libblink_core_mojo_bindings_shared|libblink_core|libblink_modules|libblink_mojo_bindings_shared|libblink_offscreen_canvas_mojo_bindings_shared|libblink_platform|libbluetooth|libboringssl|libbrowser_ui_views|libcaptive_portal|libcapture_base|libcapture_lib|libcbor|libcc_animation|libcc_base|libcc_blink|libcc_debug|libcc_ipc|libcc_paint|libcc|libcdm_manager|libchromium_sqlite3|libclearkeycdm|libclient|libcloud_policy_proto_generated_compile|libcodec|libcolor_space|libcommon|libcompositor|libcontent_common_mojo_bindings_shared|libcontent_public_common_mojo_bindings_shared|libcontent|libcrash_key|libcrcrypto|libdbus|libdevice_base|libdevice_event_log|libdevice_features|libdevice_gamepad|libdevices|libdevice_vr_mojo_bindings_blink|libdevice_vr_mojo_bindings_shared|libdevice_vr_mojo_bindings|libdevice_vr|libdiscardable_memory_client|libdiscardable_memory_common|libdiscardable_memory_service|libdisplay|libdisplay_types|libdisplay_util|libdomain_reliability|libEGL|libembedder|libembedder_switches|libevents_base|libevents_devices_x11|libevents_ozone_layout|libevents|libevents_x|libffmpeg|libfingerprint|libfreetype_harfbuzz|libgcm|libgeolocation|libgeometry_skia|libgeometry|libgesture_detection|libgfx_ipc_buffer_types|libgfx_ipc_color|libgfx_ipc_geometry|libgfx_ipc_skia|libgfx_ipc|libgfx|libgfx_switches|libgfx_x11|libgin|libgles2_implementation|libgles2|libgles2_utils|libGLESv2|libgl_init|libgl_in_process_context|libgl_wrapper|libgpu_ipc_service|libgpu|libgpu_util|libgtk3ui|libheadless|libhost|libicui18n|libicuuc|libinterfaces_shared|libipc_mojom_shared|libipc_mojom|libipc|libkeyboard|libkeyboard_with_content|libkeycodes_x11|libkeyed_service_content|libkeyed_service_core|libleveldatabase|libmanager|libmedia_blink|libmedia_devices_mojo_bindings_shared|libmedia_gpu|libmedia_mojo_services|libmedia|libmessage_center|libmessage_support|libmetrics_cpp|libmidi|libmojo_base_lib|libmojo_base_mojom_blink|libmojo_base_mojom_shared|libmojo_base_mojom|libmojo_base_shared_typemap_traits|libmojo_common_lib|libmojo_ime_lib|libmojo_mojom_bindings_shared|libmojo_mojom_bindings|libmojom_platform_shared|libmojom_shared|libmojo_public_system_cpp|libmojo_public_system|libmojo_system_impl|libnative_theme|libnet|libnet_with_v8|libnetwork_cpp_base|libnetwork_cpp|libnetwork_service|libnetwork_session_configurator|libonc|libplatform|libpolicy_component|libpolicy_proto|libppapi_host|libppapi_proxy|libppapi_shared|libprefs|libprinting|libprotobuf_lite|libproxy_config|libpublic|librange|libraster|libresource_coordinator_cpp_base|libresource_coordinator_cpp|libresource_coordinator_public_mojom_blink|libresource_coordinator_public_mojom_shared|libresource_coordinator_public_mojom|libsandbox_services|libsandbox|libseccomp_bpf|libservice_manager_cpp|libservice_manager_cpp_types|libservice_manager_mojom_blink|libservice_manager_mojom_constants_blink|libservice_manager_mojom_constants_shared|libservice_manager_mojom_constants|libservice_manager_mojom_shared|libservice_manager_mojom|libservice|libsessions|libshared_memory_support|libshell_dialogs|libskia|libsnapshot|libsql|libstartup_tracing|libstorage_browser|libstorage_common|libstub_window|libsuid_sandbox_client|libsurface|libtracing_cpp|libtracing_mojom_shared|libtracing_mojom|libtracing|libui_base_ime|libui_base|libui_base_x|libui_data_pack|libui_devtools|libui_message_center_cpp|libui_touch_selection|libui_views_mus_lib|liburl_ipc|liburl_matcher|liburl|libuser_manager|libuser_prefs|libv8_libbase|libv8_libplatform|libv8|libviews|libviz_common|libviz_resource_format|libVkLayer_core_validation|libVkLayer_object_tracker|libVkLayer_parameter_validation|libVkLayer_threading|libVkLayer_unique_objects|libwebdata_common|libweb_dialogs|libwebview|libwidevinecdmadapter|libwidevinecdm|libwm_public|libwm|libwtf|libx11_events_platform|libx11_window
-%global __requires_exclude ^(%{privlibs})\\.so
+%global __provides_exclude_from %{chromium_path}/.*\\.so|%{chromium_path}/lib/.*\\.so|%{chromium_path}/lib/.*\\.so.*
+%if 0%{?rhel} == 7
+%global privlibs libaccessibility|libanimation|libapdu|libaura_extra|libaura|libbase_i18n|libbase|libbindings_base|libbindings|libblink_android_mojo_bindings_shared|libblink_common|libblink_controller|libblink_core_mojo_bindings_shared|libblink_core|libblink_modules|libblink_mojo_bindings_shared|libblink_offscreen_canvas_mojo_bindings_shared|libblink_platform|libbluetooth|libboringssl|libbrowser_ui_views|libcaptive_portal|libcapture_base|libcapture_lib|libcbor|libcc_animation|libcc_base|libcc_blink|libcc_debug|libcc_ipc|libcc_paint|libcc|libcdm_manager|libchromium_sqlite3|libclearkeycdm|libclient|libcloud_policy_proto_generated_compile|libcodec|libcolor_space|libcommon|libcompositor|libcontent_common_mojo_bindings_shared|libcontent_public_common_mojo_bindings_shared|libcontent|libcrash_key|libcrcrypto|libdbus|libdevice_base|libdevice_event_log|libdevice_features|libdevice_gamepad|libdevices|libdevice_vr_mojo_bindings_blink|libdevice_vr_mojo_bindings_shared|libdevice_vr_mojo_bindings|libdevice_vr|libdiscardable_memory_client|libdiscardable_memory_common|libdiscardable_memory_service|libdisplay|libdisplay_types|libdisplay_util|libdomain_reliability|libEGL|libembedder|libembedder_switches|libevents_base|libevents_devices_x11|libevents_ozone_layout|libevents|libevents_x|libffmpeg|libfido|libfingerprint|libfreetype_harfbuzz|libgcm|libgeolocation|libgeometry_skia|libgeometry|libgesture_detection|libgfx_ipc_buffer_types|libgfx_ipc_color|libgfx_ipc_geometry|libgfx_ipc_skia|libgfx_ipc|libgfx|libgfx_switches|libgfx_x11|libgin|libgles2_implementation|libgles2|libgles2_utils|libGLESv2|libgl_init|libgl_in_process_context|libgl_wrapper|libgpu_ipc_service|libgpu|libgpu_util|libgtk3ui|libheadless|libhost|libicui18n|libicuuc|libinterfaces_shared|libipc_mojom_shared|libipc_mojom|libipc|libkeyboard|libkeycodes_x11|libkeyed_service_content|libkeyed_service_core|libleveldatabase|libmanager|libmedia_blink|libmedia_devices_mojo_bindings_shared|libmedia_gpu|libmedia_mojo_services|libmedia|libmessage_center|libmessage_support|libmetrics_cpp|libmidi|libmirclient|libmojo_base_lib|libmojo_base_mojom_blink|libmojo_base_mojom_shared|libmojo_base_mojom|libmojo_base_shared_typemap_traits|libmojo_edk_ports|libmojo_edk|libmojo_ime_lib|libmojom_core_shared|libmojo_mojom_bindings_shared|libmojo_mojom_bindings|libmojom_platform_shared|libmojo_public_system_cpp|libmojo_public_system|libnative_theme|libnet|libnet_with_v8|libnetwork_cpp_base|libnetwork_cpp|libnetwork_service|libnetwork_session_configurator|libonc|libplatform|libpolicy_component|libpolicy_proto|libppapi_host|libppapi_proxy|libppapi_shared|libprefs|libprinting|libprotobuf_lite|libproxy_config|libpublic|librange|libraster|libresource_coordinator_cpp_base|libresource_coordinator_cpp|libresource_coordinator_public_mojom_blink|libresource_coordinator_public_mojom_shared|libresource_coordinator_public_mojom|libsandbox_services|libsandbox|libseccomp_bpf|libservice_manager_cpp|libservice_manager_cpp_types|libservice_manager_mojom_blink|libservice_manager_mojom_constants_blink|libservice_manager_mojom_constants_shared|libservice_manager_mojom_constants|libservice_manager_mojom_shared|libservice_manager_mojom|libservice|libsessions|libshared_memory_support|libshell_dialogs|libskia|libsnapshot|libsql|libstartup_tracing|libstorage_browser|libstorage_common|libstub_window|libsuid_sandbox_client|libsurface|libtracing_cpp|libtracing_mojom_shared|libtracing_mojom|libtracing|libui_base_ime|libui_base|libui_base_x|libui_data_pack|libui_devtools|libui_message_center_cpp|libui_touch_selection|libui_views_mus_lib|liburl_ipc|liburl_matcher|liburl|libuser_manager|libuser_prefs|libv8_libbase|libv8_libplatform|libv8|libviews|libviz_common|libviz_resource_format|libVkLayer_core_validation|libVkLayer_object_tracker|libVkLayer_parameter_validation|libVkLayer_threading|libVkLayer_unique_objects|libwebdata_common|libweb_dialogs|libwebview|libwm_public|libwm|libwtf|libx11_events_platform|libx11_window|libbase|libEGL|libGLESv2|libfontconfig
+%else
+%global privlibs libaccessibility|libanimation|libapdu|libaura_extra|libaura|libbase_i18n|libbase|libbindings_base|libbindings|libblink_android_mojo_bindings_shared|libblink_common|libblink_controller|libblink_core_mojo_bindings_shared|libblink_core|libblink_modules|libblink_mojo_bindings_shared|libblink_offscreen_canvas_mojo_bindings_shared|libblink_platform|libbluetooth|libboringssl|libbrowser_ui_views|libcaptive_portal|libcapture_base|libcapture_lib|libcbor|libcc_animation|libcc_base|libcc_blink|libcc_debug|libcc_ipc|libcc_paint|libcc|libcdm_manager|libchromium_sqlite3|libclearkeycdm|libclient|libcloud_policy_proto_generated_compile|libcodec|libcolor_space|libcommon|libcompositor|libcontent_common_mojo_bindings_shared|libcontent_public_common_mojo_bindings_shared|libcontent|libcrash_key|libcrcrypto|libdbus|libdevice_base|libdevice_event_log|libdevice_features|libdevice_gamepad|libdevices|libdevice_vr_mojo_bindings_blink|libdevice_vr_mojo_bindings_shared|libdevice_vr_mojo_bindings|libdevice_vr|libdiscardable_memory_client|libdiscardable_memory_common|libdiscardable_memory_service|libdisplay|libdisplay_types|libdisplay_util|libdomain_reliability|libEGL|libembedder|libembedder_switches|libevents_base|libevents_devices_x11|libevents_ozone_layout|libevents|libevents_x|libffmpeg|libfido|libfingerprint|libfreetype_harfbuzz|libgcm|libgeolocation|libgeometry_skia|libgeometry|libgesture_detection|libgfx_ipc_buffer_types|libgfx_ipc_color|libgfx_ipc_geometry|libgfx_ipc_skia|libgfx_ipc|libgfx|libgfx_switches|libgfx_x11|libgin|libgles2_implementation|libgles2|libgles2_utils|libGLESv2|libgl_init|libgl_in_process_context|libgl_wrapper|libgpu_ipc_service|libgpu|libgpu_util|libgtk3ui|libheadless|libhost|libicui18n|libicuuc|libinterfaces_shared|libipc_mojom_shared|libipc_mojom|libipc|libkeyboard|libkeycodes_x11|libkeyed_service_content|libkeyed_service_core|libleveldatabase|libmanager|libmedia_blink|libmedia_devices_mojo_bindings_shared|libmedia_gpu|libmedia_mojo_services|libmedia|libmessage_center|libmessage_support|libmetrics_cpp|libmidi|libmirclient|libmojo_base_lib|libmojo_base_mojom_blink|libmojo_base_mojom_shared|libmojo_base_mojom|libmojo_base_shared_typemap_traits|libmojo_edk_ports|libmojo_edk|libmojo_ime_lib|libmojom_core_shared|libmojo_mojom_bindings_shared|libmojo_mojom_bindings|libmojom_platform_shared|libmojo_public_system_cpp|libmojo_public_system|libnative_theme|libnet|libnet_with_v8|libnetwork_cpp_base|libnetwork_cpp|libnetwork_service|libnetwork_session_configurator|libonc|libplatform|libpolicy_component|libpolicy_proto|libppapi_host|libppapi_proxy|libppapi_shared|libprefs|libprinting|libprotobuf_lite|libproxy_config|libpublic|librange|libraster|libresource_coordinator_cpp_base|libresource_coordinator_cpp|libresource_coordinator_public_mojom_blink|libresource_coordinator_public_mojom_shared|libresource_coordinator_public_mojom|libsandbox_services|libsandbox|libseccomp_bpf|libservice_manager_cpp|libservice_manager_cpp_types|libservice_manager_mojom_blink|libservice_manager_mojom_constants_blink|libservice_manager_mojom_constants_shared|libservice_manager_mojom_constants|libservice_manager_mojom_shared|libservice_manager_mojom|libservice|libsessions|libshared_memory_support|libshell_dialogs|libskia|libsnapshot|libsql|libstartup_tracing|libstorage_browser|libstorage_common|libstub_window|libsuid_sandbox_client|libsurface|libtracing_cpp|libtracing_mojom_shared|libtracing_mojom|libtracing|libui_base_ime|libui_base|libui_base_x|libui_data_pack|libui_devtools|libui_message_center_cpp|libui_touch_selection|libui_views_mus_lib|liburl_ipc|liburl_matcher|liburl|libuser_manager|libuser_prefs|libv8_libbase|libv8_libplatform|libv8|libviews|libviz_common|libviz_resource_format|libVkLayer_core_validation|libVkLayer_object_tracker|libVkLayer_parameter_validation|libVkLayer_threading|libVkLayer_unique_objects|libwebdata_common|libweb_dialogs|libwebview|libwm_public|libwm|libwtf|libx11_events_platform|libx11_window|libbase|libEGL|libGLESv2
+%endif
+%global __requires_exclude ^(%{privlibs})\\.so*
 
 # If we build with shared on, then chrome-remote-desktop depends on chromium libs.
 # If we build with shared off, then users cannot swap out libffmpeg (and i686 gets a lot harder to build)
@@ -128,21 +132,21 @@ BuildRequires:  libicu-devel >= 5.4
 %global chromoting_client_id %nil
 %endif
 
-%global majorversion 66
+%global majorversion 67
 
 %if %{freeworld}
 Name:		chromium%{chromium_channel}%{?freeworld:-freeworld}
 %else
 Name:		chromium%{chromium_channel}
 %endif
-Version:	%{majorversion}.0.3359.181
-Release:	2%{?dist}
+Version:	%{majorversion}.0.3396.62
+Release:	1%{?dist}
 Summary:	A WebKit (Blink) powered web browser
 Url:		http://www.chromium.org/Home
 License:	BSD and LGPLv2+ and ASL 2.0 and IJG and MIT and GPLv2+ and ISC and OpenSSL and (MPLv1.1 or GPLv2 or LGPLv2)
 
 ### Chromium Fedora Patches ###
-Patch0:		chromium-64.0.3282.119-gcc5.patch
+Patch0:		chromium-67.0.3396.62-gcc5.patch
 Patch1:		chromium-45.0.2454.101-linux-path-max.patch
 Patch2:		chromium-55.0.2883.75-addrfix.patch
 Patch4:		chromium-46.0.2490.71-notest.patch
@@ -168,7 +172,7 @@ Patch18:	chromium-52.0.2743.82-master-prefs-path.patch
 # https://bugzilla.redhat.com/show_bug.cgi?id=1361157
 Patch19:	chromium-52.0.2743.116-unset-madv_free.patch
 # Use gn system files
-Patch20:	chromium-60.0.3112.78-gn-system.patch
+Patch20:	chromium-67.0.3396.62-gn-system.patch
 # Fix last commit position issue
 # https://groups.google.com/a/chromium.org/forum/#!topic/gn-dev/7nlJv486bD4
 Patch21:	chromium-60.0.3112.78-last-commit-position.patch
@@ -184,10 +188,10 @@ Patch26:	chromium-59.0.3071.86-i686-ld-memory-tricks.patch
 # /builddir/build/BUILD/chromium-54.0.2840.90/out/Release/../../content/renderer/child_frame_compositing_helper.cc:214: undefined reference to `cc_blink::WebLayerImpl::setOpaque(bool)'
 Patch27:	chromium-63.0.3289.84-setopaque.patch
 # Use -fpermissive to build WebKit
-Patch31:	chromium-56.0.2924.87-fpermissive.patch
+# Patch31:	chromium-56.0.2924.87-fpermissive.patch
 # Fix issue with compilation on gcc7
 # Thanks to Ben Noordhuis
-Patch33: 	chromium-65.0.3325.146-gcc7.patch
+# Patch33: 	chromium-65.0.3325.146-gcc7.patch
 # Revert https://chromium.googlesource.com/chromium/src/+/b794998819088f76b4cf44c8db6940240c563cf4%5E%21/#F0
 # https://bugs.chromium.org/p/chromium/issues/detail?id=712737
 # https://bugzilla.redhat.com/show_bug.cgi?id=1446851
@@ -215,39 +219,41 @@ Patch57:	chromium-63.0.3289.84-aarch64-glibc-2.26.90.patch
 # From gentoo
 Patch62:	chromium-66.0.3359.117-gcc5-r3.patch
 # Do not try to use libc++ in the remoting stack
-Patch63:	chromium-63.0.3289.84-nolibc++.patch
+# Patch63:	chromium-63.0.3289.84-nolibc++.patch
 # To use round with gcc, you need to #include <cmath>
 Patch65:	chromium-65.0.3325.146-gcc-round-fix.patch
 # Include proper headers to invoke memcpy()
 Patch67:	chromium-65.0.3325.146-memcpy-fix.patch
 # ../../mojo/public/cpp/bindings/associated_interface_ptr_info.h:48:43: error: cannot convert 'const mojo::ScopedInterfaceEndpointHandle' to 'bool' in return
-Patch85:	chromium-65.0.3325.162-boolfix.patch
+Patch85:	chromium-67.0.3396.62-boolfix.patch
 # From Debian
-Patch86:	chromium-65.0.3325.162-skia-aarch64-buildfix.patch
+Patch86:	chromium-67.0.3396.62-skia-aarch64-buildfix.patch
 # Use lstdc++ on EPEL7 only
 Patch87:	chromium-65.0.3325.162-epel7-stdc++.patch
 # Missing files in tarball
 Patch88:	chromium-66.0.3359.117-missing-files.patch
 # https://chromium.googlesource.com/chromium/src/+/ba4141e451f4e0b1b19410b1b503bd32e150df06%5E%21/#F0
-Patch89:	chromium-66.0.3359.117-gcc-optional-move-fixes.patch
+# Patch89:	chromium-66.0.3359.117-gcc-optional-move-fixes.patch
 # https://chromium.googlesource.com/chromium/src/+/4f2b52281ce1649ea8347489443965ad33262ecc%5E%21
-Patch90:	chromium-66.0.3359.117-gcc-copy-constructor-fix.patch
+# Patch90:	chromium-66.0.3359.117-gcc-copy-constructor-fix.patch
 # https://bugs.chromium.org/p/chromium/issues/detail?id=816952
-Patch91:	chromium-66.0.3359.117-gcc-vector-copy-constructor-fix.patch
+# Patch91:	chromium-66.0.3359.117-gcc-vector-copy-constructor-fix.patch
 # Do not use unrar code, it is non-free
 Patch92:	chromium-66.0.3359.117-nounrar.patch
 # Upstream GCC fixes
 Patch93:	chromium-66.0.3359.117-GCC-build-fix-base-Optional-T-requires-the-full-decl.patch
 Patch94:	chromium-66.0.3359.117-GCC-fully-declare-ConfigurationPolicyProvider.patch
-Patch95:	chromium-65.0.3325.146-GCC-IDB-methods-String-renamed-to-GetString.patch
+# Patch95:	chromium-65.0.3325.146-GCC-IDB-methods-String-renamed-to-GetString.patch
 # https://github.com/archlinuxarm/PKGBUILDs/blob/master/extra/chromium/0006-GCC-do-not-use-initializer-list-for-NoDestructor-of-.patch
-Patch96:	chromium-66.0.3359.117-GCC-do-not-use-initializer-list-for-NoDestructor-of-.patch
+# Patch96:	chromium-66.0.3359.117-GCC-do-not-use-initializer-list-for-NoDestructor-of-.patch
 # https://chromium.googlesource.com/chromium/src/+/b84682f31dc99b9c90f5a04947075815697c68d9%5E%21/#F0
-Patch97:	chromium-66.0.3359.139-arm-init-fix.patch
+# Patch97:	chromium-66.0.3359.139-arm-init-fix.patch
 # GCC8 has changed the alignof operator to return the minimal alignment required by the target ABI
 # instead of the preferred alignment. This means int64_t is now 4 on i686 (instead of 8).
 # Use __alignof__ to get the value we expect (and chromium checks for).
 Patch98:	chromium-66.0.3359.170-gcc8-alignof.patch
+# https://chromium.googlesource.com/crashpad/crashpad/+/26ef5c910fc7e2edb441f1d2b39944195342dee9
+Patch99:	chromium-67.0.3396.62-crashpad-aarch64-buildfix.patch
 
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
@@ -275,6 +281,9 @@ Source8:	get_linux_tests_names.py
 Source9:	chromium-browser.xml
 Source11:	chrome-remote-desktop@.service
 Source13:	master_preferences
+# Unpackaged fonts
+Source14:	https://fontlibrary.org/assets/downloads/gelasio/4d610887ff4d445cbc639aae7828d139/gelasio.zip
+Source15:	http://download.savannah.nongnu.org/releases/freebangfont/MuktiNarrow-0.94.tar.bz2
 
 # We can assume gcc and binutils.
 BuildRequires:	gcc-c++
@@ -434,6 +443,16 @@ BuildRequires:	pkgconfig(gnome-keyring-1)
 # remote desktop needs this
 BuildRequires:	pam-devel
 BuildRequires:	systemd
+BuildRequires:	google-croscore-arimo-fonts
+BuildRequires:	google-croscore-cousine-fonts
+BuildRequires:	dejavu-sans-fonts
+BuildRequires:	thai-scalable-garuda-fonts
+BuildRequires:	lohit-devanagari-fonts
+BuildRequires:	lohit-gurmukhi-fonts
+BuildRequires:	lohit-tamil-fonts
+BuildRequires:	google-noto-sans-cjk-jp-fonts
+BuildRequires:	google-noto-sans-khmer-fonts
+BuildRequires:	google-croscore-tinos-fonts
 # using the built from source version on aarch64
 BuildRequires:	ninja-build
 
@@ -695,8 +714,8 @@ udev.
 %patch25 -p1 -b .jpegfix
 %patch26 -p1 -b .ldmemory
 %patch27 -p1 -b .setopaque
-%patch31 -p1 -b .permissive
-%patch33 -p1 -b .gcc7
+# %%patch31 -p1 -b .permissive
+# %%patch33 -p1 -b .gcc7
 %patch36 -p1 -b .revert
 %patch37 -p1 -b .ffmpeg-stdatomic
 %patch39 -p1 -b .system-clang
@@ -713,7 +732,7 @@ udev.
 # %%patch57 -p1 -b .aarch64glibc
 # %%endif
 %patch62 -p1 -b .gcc5-r3
-%patch63 -p1 -b .nolibc++
+# %%patch63 -p1 -b .nolibc++
 %patch65 -p1 -b .gcc-round-fix
 %patch67 -p1 -b .memcpyfix
 %patch85 -p1 -b .boolfix
@@ -722,16 +741,17 @@ udev.
 %patch87 -p1 -b .epel7
 %endif
 %patch88 -p1 -b .missing
-%patch89 -p1 -b .gccomove
-%patch90 -p1 -b .copycon
-%patch91 -p1 -b .944404
+# %%patch89 -p1 -b .gccomove
+# %%patch90 -p1 -b .copycon
+# %%patch91 -p1 -b .944404
 %patch92 -p1 -b .nounrar
-%patch93 -p1 -b .gcc-full-decl
+# %%patch93 -p1 -b .gcc-full-decl
 %patch94 -p1 -b .gcc-cpolicyprovider
-%patch95 -p1 -b .gcc-getstring
-%patch96 -p1 -b .flatsetfix
-%patch97 -p1 -b .arm-init-fix
+# %%patch95 -p1 -b .gcc-getstring
+# %%patch96 -p1 -b .flatsetfix
+# %%patch97 -p1 -b .arm-init-fix
 %patch98 -p1 -b .gcc8-alignof
+%patch99 -p1 -b .crashpad-aarch64-fix
 
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
@@ -844,6 +864,23 @@ ln -s /usr/bin/clang clang
 popd
 %endif
 
+# Unpack fonts
+pushd third_party/test_fonts
+mkdir test_fonts
+cd test_fonts
+unzip %{SOURCE14}
+tar xf %{SOURCE15}
+mv MuktiNarrow0.94/MuktiNarrow.ttf .
+rm -rf MuktiNarrow0.94
+cp -a /usr/share/fonts/google-croscore/Arimo-*.ttf .
+cp -a /usr/share/fonts/google-croscore/Cousine-*.ttf .
+cp -a /usr/share/fonts/dejavu/DejaVuSans.ttf /usr/share/fonts/dejavu/DejaVuSans-Bold.ttf .
+cp -a /usr/share/fonts/thai-scalable/Garuda.ttf .
+cp -a /usr/share/fonts/lohit-devanagari/Lohit-Devanagari.ttf /usr/share/fonts/lohit-gurmukhi/Lohit-Gurmukhi.ttf /usr/share/fonts/lohit-tamil/Lohit-Tamil.ttf .
+cp -a /usr/share/fonts/google-noto-cjk/NotoSansCJKjp-Regular.otf /usr/share/fonts/google-noto/NotoSansKhmer-Regular.ttf .
+cp -a /usr/share/fonts/google-croscore/Tinos-*.ttf .
+popd
+
 # Core defines are flags that are true for both the browser and headless.
 CHROMIUM_CORE_GN_DEFINES=""
 CHROMIUM_CORE_GN_DEFINES+=' is_debug=false'
@@ -876,7 +913,7 @@ CHROMIUM_BROWSER_GN_DEFINES+=' is_component_ffmpeg=false is_component_build=fals
 %endif
 CHROMIUM_BROWSER_GN_DEFINES+=' remove_webcore_debug_symbols=true enable_hangout_services_extension=true'
 CHROMIUM_BROWSER_GN_DEFINES+=' use_aura=true'
-CHROMIUM_BROWSER_GN_DEFINES+=' enable_webrtc=true enable_widevine=true'
+CHROMIUM_BROWSER_GN_DEFINES+=' enable_webrtc=true'
 %if 0%{gtk3}
 CHROMIUM_BROWSER_GN_DEFINES+=' use_gtk3=true'
 %else
@@ -927,6 +964,7 @@ build/linux/unbundle/remove_bundled_libraries.py \
 	'third_party/angle/third_party/spirv-headers' \
 	'third_party/angle/third_party/spirv-tools' \
 	'third_party/angle/third_party/vulkan-validation-layers' \
+	'third_party/apple_apsl' \
 	'third_party/blanketjs' \
 	'third_party/blink' \
 	'third_party/boringssl' \
@@ -947,6 +985,8 @@ build/linux/unbundle/remove_bundled_libraries.py \
 	'third_party/catapult/tracing/third_party/pako' \
         'third_party/ced' \
 	'third_party/cld_3' \
+	'third_party/crashpad' \
+	'third_party/crashpad/crashpad/third_party/zlib/' \
 	'third_party/crc32c' \
 	'third_party/cros_system_api' \
 	'third_party/devscripts' \
@@ -1049,6 +1089,7 @@ build/linux/unbundle/remove_bundled_libraries.py \
 	'third_party/swiftshader/third_party/LLVM' \
 	'third_party/swiftshader/third_party/llvm-subzero' \
 	'third_party/tcmalloc' \
+	'third_party/test_fonts' \
         'third_party/usb_ids' \
 	'third_party/usrsctp' \
 	'third_party/vulkan' \
@@ -1192,7 +1233,7 @@ sed -i.orig -e 's/getenv("CHROME_VERSION_EXTRA")/"Fedora Project"/' $FILE
 # Do headless first.  
 ../depot_tools/ninja -C %{headlesstarget} -vvv headless_shell
 
-../depot_tools/ninja -C %{target} -vvv chrome chrome_sandbox chromedriver widevinecdmadapter clear_key_cdm policy_templates
+../depot_tools/ninja -C %{target} -vvv chrome chrome_sandbox chromedriver clear_key_cdm policy_templates
 
 # remote client
 pushd remoting
@@ -1269,9 +1310,10 @@ cp -a natives_blob.bin %{buildroot}%{chromium_path}
 cp -a snapshot_blob.bin %{buildroot}%{chromium_path}
 cp -a v8_context_snapshot.bin %{buildroot}%{chromium_path}
 cp -a xdg-mime xdg-settings %{buildroot}%{chromium_path}
+cp -a MEIPreload %{buildroot}%{chromium_path}
 %if 0%{?shared}
 cp -a lib*.so* %{buildroot}%{chromium_path}
-cp -p %{buildroot}%{chromium_path}/libwidevinecdm.so{,.fedora}
+# cp -p %%{buildroot}%{chromium_path}/libwidevinecdm.so{,.fedora}
 cp -p %{buildroot}%{chromium_path}/libffmpeg.so{,.%{lsuffix}}
 cp -p %{buildroot}%{chromium_path}/libffmpeg.so.TOC{,.%{lsuffix}}
 cp -p %{buildroot}%{chromium_path}/libmedia.so{,.%{lsuffix}}
@@ -1412,17 +1454,6 @@ if st and st.type == "link" then
   os.remove(path)
 end
 
-%posttrans libs
-%{_sbindir}/update-alternatives --install \
-  %{_libdir}/chromium-browser/libwidevinecdm.so libwidevinecdm.so \
-  %{_libdir}/chromium-browser/libwidevinecdm.so.fedora 10
-
-%preun libs
-if [ $1 = 0 ]; then
-  %{_sbindir}/alternatives --remove libwidevinecdm.so \
-    %{_libdir}/chromium-browser/libwidevinecdm.so.fedora
-fi
-
 %if %{freeworld}
 %posttrans -n chromium-libs-media-freeworld
 %{_sbindir}/update-alternatives --install \
@@ -1493,6 +1524,7 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/icudtl.dat
 %{chromium_path}/%{chromium_browser_channel}
 %{chromium_path}/%{chromium_browser_channel}.sh
+%{chromium_path}/MEIPreload/
 %ifarch x86_64 i686
 %{chromium_path}/swiftshader/
 %endif
@@ -1583,7 +1615,6 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %files libs
 %exclude %{chromium_path}/libffmpeg.so*
 %exclude %{chromium_path}/libmedia.so*
-%exclude %{chromium_path}/libwidevinecdm.so
 %{chromium_path}/lib*.so*
 %endif
 
@@ -1632,6 +1663,12 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 
 
 %changelog
+* Wed May 30 2018 Tom Callaway <spot@fedoraproject.org> 67.0.3396.62-1
+- 67 releases of chromium on the wall...
+
+* Tue May 29 2018 Tom Callaway <spot@fedoraproject.org> 66.0.3359.181-3
+- also filter out fontconfig on epel7
+
 * Wed May 23 2018 Tom Callaway <spot@fedoraproject.org> 66.0.3359.181-2
 - fix missing files
 
