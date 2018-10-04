@@ -144,7 +144,7 @@ Name:		chromium%{chromium_channel}%{?freeworld:-freeworld}
 %else
 Name:		chromium%{chromium_channel}
 %endif
-Version:	%{majorversion}.0.3497.92
+Version:	%{majorversion}.0.3497.100
 Release:	1%{?dist}
 Summary:	A WebKit (Blink) powered web browser
 Url:		http://www.chromium.org/Home
@@ -814,10 +814,9 @@ udev.
 %patch111 -p1 -b .wvhack
 %patch112 -p1 -b .sanebuild
 
-
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
-find -type f -exec sed -i '1s=^#!/usr/bin/\(python\|env python\)[23]\?=#!%{__python2}=' {} +
+find -type f -exec sed -iE '1s=^#! */usr/bin/\(python\|env python\)[23]\?=#!%{__python2}=' {} +
 
 %if 0%{?asan}
 export CC="clang"
@@ -1765,6 +1764,9 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 
 
 %changelog
+* Thu Oct  4 2018 Tom Callaway <spot@fedoraproject.org> - 69.0.3497.100-1
+- update to 69.0.3497.100
+
 * Wed Sep 12 2018 Tom Callaway <spot@fedoraproject.org> - 69.0.3497.92-1
 - update to 69.0.3497.92
 
