@@ -380,6 +380,12 @@ Patch143: chromium-110-v8-gcc.patch
 Patch144: chromium-111-v8-std-layout1.patch
 Patch145: chromium-111-v8-std-layout2.patch
 
+# Patches for riscv
+Patch146: chromium-102-riscv-crashpad.patch
+Patch147: chromium-102-riscv-dav1d.patch
+Patch148: chromium-103-riscv-angle.patch
+Patch149: chromium-110-riscv-sandbox.patch
+
 # VAAPI
 # Upstream turned VAAPI on in Linux in 86
 Patch202: chromium-104.0.5112.101-enable-hardware-accelerated-mjpeg.patch
@@ -1144,7 +1150,8 @@ CHROMIUM_CORE_GN_DEFINES+=' google_default_client_secret="%{default_client_secre
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=true'
 CHROMIUM_CORE_GN_DEFINES+=' clang_base_path="%{_prefix}"'
 CHROMIUM_CORE_GN_DEFINES+=' clang_use_chrome_plugins=false'
-CHROMIUM_CORE_GN_DEFINES+=' use_lld=true'
+# Temporarily disable lld for riscv
+CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
 %else
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=false'
 CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
@@ -1232,6 +1239,8 @@ CHROMIUM_HEADLESS_GN_DEFINES+=' use_libpci=false use_pulseaudio=false use_udev=f
 CHROMIUM_HEADLESS_GN_DEFINES+=' v8_enable_lazy_source_positions=false use_glib=false use_gtk=false use_pangocairo=false'
 CHROMIUM_HEADLESS_GN_DEFINES+=' use_qt=false is_component_build=false enable_ffmpeg_video_decoders=false media_use_ffmpeg=false'
 CHROMIUM_HEADLESS_GN_DEFINES+=' media_use_libvpx=false proprietary_codecs=false'
+# Added for riscv
+CHROMIUM_HEADLESS_GN_DEFINES+=' enable_swiftshader=true'
 export CHROMIUM_HEADLESS_GN_DEFINES
 
 build/linux/unbundle/replace_gn_files.py --system-libraries \
