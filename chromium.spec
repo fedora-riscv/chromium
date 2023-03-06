@@ -707,9 +707,9 @@ Requires: chromium-common%{_isa} = %{version}-%{release}
 ExclusiveArch: x86_64
 %else
 %if 0%{?fedora} > 32
-ExclusiveArch: x86_64 aarch64
+ExclusiveArch: x86_64 aarch64 riscv64
 %else
-ExclusiveArch: x86_64 aarch64
+ExclusiveArch: x86_64 aarch64 riscv64
 %endif
 %endif
 
@@ -999,6 +999,12 @@ udev.
 %patch144 -p1 -b .v8-std-layout1
 %patch145 -p1 -b .v8-std-layout2
 
+# riscv
+%patch146 -p1 -b .riscv-crashpad
+%patch147 -p1 -b .riscv-dav1d
+%patch148 -p1 -b .riscv-angle
+%patch149 -p1 -b .riscv-sandbox
+
 %if %{use_qt}
 %patch121 -p1 -b .enable-allowqt
 %endif
@@ -1151,7 +1157,7 @@ CHROMIUM_CORE_GN_DEFINES+=' is_clang=true'
 CHROMIUM_CORE_GN_DEFINES+=' clang_base_path="%{_prefix}"'
 CHROMIUM_CORE_GN_DEFINES+=' clang_use_chrome_plugins=false'
 # Temporarily disable lld for riscv
-CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
+CHROMIUM_CORE_GN_DEFINES+=' use_lld=true'
 %else
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=false'
 CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
