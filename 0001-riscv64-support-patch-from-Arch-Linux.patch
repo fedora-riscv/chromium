@@ -1,0 +1,1590 @@
+From 1be448747fb8a76ef489ccc83e76b989c7d6fd67 Mon Sep 17 00:00:00 2001
+From: Liu Yang <Yang.Liu.sn@gmail.com>
+Date: Sun, 7 May 2023 18:24:02 +0800
+Subject: [PATCH] riscv64 support patch from Arch Linux.
+
+---
+ .../partition_allocator/partition_alloc.gni   |  2 +-
+ sandbox/features.gni                          |  3 +-
+ sandbox/linux/bpf_dsl/linux_syscall_ranges.h  |  7 ++
+ sandbox/linux/bpf_dsl/seccomp_macros.h        | 40 ++++++++++
+ .../seccomp-bpf-helpers/baseline_policy.cc    | 11 ++-
+ .../syscall_parameters_restrictions.cc        |  3 +-
+ .../linux/seccomp-bpf-helpers/syscall_sets.cc | 69 +++++++++-------
+ .../linux/seccomp-bpf-helpers/syscall_sets.h  | 14 +++-
+ sandbox/linux/seccomp-bpf/syscall.cc          | 36 ++++++++-
+ sandbox/linux/services/credentials.cc         |  2 +-
+ sandbox/linux/services/syscall_wrappers.cc    |  2 +-
+ .../linux/syscall_broker/broker_process.cc    | 20 ++---
+ sandbox/linux/system_headers/linux_seccomp.h  |  8 ++
+ sandbox/linux/system_headers/linux_signal.h   |  2 +-
+ sandbox/linux/system_headers/linux_stat.h     |  2 +-
+ sandbox/linux/system_headers/linux_syscalls.h |  4 +
+ .../linux/bpf_cros_amd_gpu_policy_linux.cc    |  2 +-
+ sandbox/policy/linux/bpf_gpu_policy_linux.cc  |  2 +-
+ third_party/angle/gni/angle.gni               |  3 +-
+ third_party/angle/src/common/platform.h       |  2 +-
+ .../crashpad/minidump/minidump_context.h      | 35 +++++++++
+ .../minidump/minidump_context_writer.cc       | 44 +++++++++++
+ .../minidump/minidump_context_writer.h        | 43 ++++++++++
+ .../minidump/minidump_misc_info_writer.cc     |  4 +
+ .../crashpad/snapshot/capture_memory.cc       | 10 +++
+ .../crashpad/snapshot/cpu_architecture.h      |  8 +-
+ .../crashpad/crashpad/snapshot/cpu_context.cc |  2 +
+ .../crashpad/crashpad/snapshot/cpu_context.h  | 16 ++++
+ .../snapshot/linux/cpu_context_linux.cc       | 24 ++++++
+ .../snapshot/linux/cpu_context_linux.h        | 16 ++++
+ .../linux/exception_snapshot_linux.cc         | 55 +++++++++++++
+ .../snapshot/linux/exception_snapshot_linux.h |  3 +
+ .../snapshot/linux/process_reader_linux.cc    |  3 +
+ .../crashpad/snapshot/linux/signal_context.h  | 61 +++++++++++++++
+ .../snapshot/linux/system_snapshot_linux.cc   | 12 +++
+ .../snapshot/linux/thread_snapshot_linux.cc   | 16 ++++
+ .../snapshot/linux/thread_snapshot_linux.h    |  3 +
+ .../crashpad/crashpad/util/linux/ptracer.cc   | 45 +++++++++++
+ .../crashpad/util/linux/thread_info.h         | 78 ++++++++++++++++++-
+ .../util/net/http_transport_libcurl.cc        |  2 +
+ 40 files changed, 656 insertions(+), 58 deletions(-)
+
+diff --git a/base/allocator/partition_allocator/partition_alloc.gni b/base/allocator/partition_allocator/partition_alloc.gni
+index 608568190..0647de60d 100644
+--- a/base/allocator/partition_allocator/partition_alloc.gni
++++ b/base/allocator/partition_allocator/partition_alloc.gni
+@@ -14,7 +14,7 @@ if (is_apple) {
+ if (is_nacl) {
+   # NaCl targets don't use 64-bit pointers.
+   has_64_bit_pointers = false
+-} else if (current_cpu == "x64" || current_cpu == "arm64") {
++} else if (current_cpu == "x64" || current_cpu == "arm64" || current_cpu == "riscv64") {
+   has_64_bit_pointers = true
+ } else if (current_cpu == "x86" || current_cpu == "arm") {
+   has_64_bit_pointers = false
+diff --git a/sandbox/features.gni b/sandbox/features.gni
+index 843414411..8aa52983f 100644
+--- a/sandbox/features.gni
++++ b/sandbox/features.gni
+@@ -9,7 +9,8 @@
+ use_seccomp_bpf = (is_linux || is_chromeos || is_android) &&
+                   (current_cpu == "x86" || current_cpu == "x64" ||
+                    current_cpu == "arm" || current_cpu == "arm64" ||
+-                   current_cpu == "mipsel" || current_cpu == "mips64el")
++                   current_cpu == "mipsel" || current_cpu == "mips64el" ||
++                   current_cpu == "riscv64")
+ 
+ # SSBD (Speculative Store Bypass Disable) is a mitigation of Spectre Variant 4.
+ # As Spectre Variant 4 can be mitigated by site isolation, opt-out SSBD on site
+diff --git a/sandbox/linux/bpf_dsl/linux_syscall_ranges.h b/sandbox/linux/bpf_dsl/linux_syscall_ranges.h
+index 1d0590b7d..b722fbc95 100644
+--- a/sandbox/linux/bpf_dsl/linux_syscall_ranges.h
++++ b/sandbox/linux/bpf_dsl/linux_syscall_ranges.h
+@@ -56,6 +56,13 @@
+ #define MAX_PUBLIC_SYSCALL __NR_syscalls
+ #define MAX_SYSCALL MAX_PUBLIC_SYSCALL
+ 
++#elif defined(__riscv)
++
++#include <asm/unistd.h>
++#define MIN_SYSCALL 0u
++#define MAX_PUBLIC_SYSCALL __NR_syscalls
++#define MAX_SYSCALL MAX_PUBLIC_SYSCALL
++
+ #else
+ #error "Unsupported architecture"
+ #endif
+diff --git a/sandbox/linux/bpf_dsl/seccomp_macros.h b/sandbox/linux/bpf_dsl/seccomp_macros.h
+index 87d5825aa..cc9b89ba3 100644
+--- a/sandbox/linux/bpf_dsl/seccomp_macros.h
++++ b/sandbox/linux/bpf_dsl/seccomp_macros.h
+@@ -343,6 +343,46 @@ struct regs_struct {
+ #define SECCOMP_PT_PARM4(_regs) (_regs).regs[3]
+ #define SECCOMP_PT_PARM5(_regs) (_regs).regs[4]
+ #define SECCOMP_PT_PARM6(_regs) (_regs).regs[5]
++
++#elif defined(__riscv)
++struct regs_struct {
++  unsigned long regs[32];
++};
++
++#define SECCOMP_ARCH AUDIT_ARCH_RISCV64
++
++#define SECCOMP_REG(_ctx, _reg) ((_ctx)->uc_mcontext.__gregs[_reg])
++
++#define SECCOMP_RESULT(_ctx) SECCOMP_REG(_ctx, REG_A0)
++#define SECCOMP_SYSCALL(_ctx) SECCOMP_REG(_ctx, REG_A0+7)
++#define SECCOMP_IP(_ctx) (_ctx)->uc_mcontext.__gregs[REG_PC]
++#define SECCOMP_PARM1(_ctx) SECCOMP_REG(_ctx, REG_A0)
++#define SECCOMP_PARM2(_ctx) SECCOMP_REG(_ctx, REG_A0+1)
++#define SECCOMP_PARM3(_ctx) SECCOMP_REG(_ctx, REG_A0+2)
++#define SECCOMP_PARM4(_ctx) SECCOMP_REG(_ctx, REG_A0+3)
++#define SECCOMP_PARM5(_ctx) SECCOMP_REG(_ctx, REG_A0+4)
++#define SECCOMP_PARM6(_ctx) SECCOMP_REG(_ctx, REG_A0+5)
++
++#define SECCOMP_NR_IDX (offsetof(struct arch_seccomp_data, nr))
++#define SECCOMP_ARCH_IDX (offsetof(struct arch_seccomp_data, arch))
++#define SECCOMP_IP_MSB_IDX \
++  (offsetof(struct arch_seccomp_data, instruction_pointer) + 4)
++#define SECCOMP_IP_LSB_IDX \
++  (offsetof(struct arch_seccomp_data, instruction_pointer) + 0)
++#define SECCOMP_ARG_MSB_IDX(nr) \
++  (offsetof(struct arch_seccomp_data, args) + 8 * (nr) + 4)
++#define SECCOMP_ARG_LSB_IDX(nr) \
++  (offsetof(struct arch_seccomp_data, args) + 8 * (nr) + 0)
++
++#define SECCOMP_PT_RESULT(_regs) (_regs).regs[REG_A0]
++#define SECCOMP_PT_SYSCALL(_regs) (_regs).regs[REG_A0+7]
++#define SECCOMP_PT_IP(_regs) (_regs).regs[REG_PC]
++#define SECCOMP_PT_PARM1(_regs) (_regs).regs[REG_A0]
++#define SECCOMP_PT_PARM2(_regs) (_regs).regs[REG_A0+1]
++#define SECCOMP_PT_PARM3(_regs) (_regs).regs[REG_A0+2]
++#define SECCOMP_PT_PARM4(_regs) (_regs).regs[REG_A0+3]
++#define SECCOMP_PT_PARM5(_regs) (_regs).regs[REG_A0+4]
++#define SECCOMP_PT_PARM6(_regs) (_regs).regs[REG_A0+5]
+ #else
+ #error Unsupported target platform
+ 
+diff --git a/sandbox/linux/seccomp-bpf-helpers/baseline_policy.cc b/sandbox/linux/seccomp-bpf-helpers/baseline_policy.cc
+index 7bde50111..b92ab3901 100644
+--- a/sandbox/linux/seccomp-bpf-helpers/baseline_policy.cc
++++ b/sandbox/linux/seccomp-bpf-helpers/baseline_policy.cc
+@@ -59,6 +59,9 @@ bool IsBaselinePolicyAllowed(int sysno) {
+ #endif
+ #if defined(__mips__)
+          SyscallSets::IsMipsPrivate(sysno) ||
++#endif
++#if defined(__riscv)
++         SyscallSets::IsRiscvPrivate(sysno) ||
+ #endif
+          SyscallSets::IsAllowedOperationOnFd(sysno);
+   // clang-format on
+@@ -193,7 +196,7 @@ ResultExpr EvaluateSyscallImpl(int fs_denied_errno,
+     return RestrictFcntlCommands();
+ #endif
+ 
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+   // fork() is never used as a system call (clone() is used instead), but we
+   // have seen it in fallback code on Android.
+   if (sysno == __NR_fork) {
+@@ -255,7 +258,7 @@ ResultExpr EvaluateSyscallImpl(int fs_denied_errno,
+   }
+ 
+ #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+   if (sysno == __NR_mmap)
+     return RestrictMmapFlags();
+ #endif
+@@ -276,7 +279,7 @@ ResultExpr EvaluateSyscallImpl(int fs_denied_errno,
+     return RestrictPrctl();
+ 
+ #if defined(__x86_64__) || defined(__arm__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+   if (sysno == __NR_socketpair) {
+     // Only allow AF_UNIX, PF_UNIX. Crash if anything else is seen.
+     static_assert(AF_UNIX == PF_UNIX,
+@@ -366,7 +369,7 @@ ResultExpr EvaluateSyscallImpl(int fs_denied_errno,
+   // Allow creating pipes, but don't allow weird flags to pipe2().
+   // O_NOTIFICATION_PIPE (== O_EXCL) can be used to create
+   // "notification pipes", which are rarely used.
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+   if (sysno == __NR_pipe) {
+     return Allow();
+   }
+diff --git a/sandbox/linux/seccomp-bpf-helpers/syscall_parameters_restrictions.cc b/sandbox/linux/seccomp-bpf-helpers/syscall_parameters_restrictions.cc
+index 8803b206b..7f2cdf904 100644
+--- a/sandbox/linux/seccomp-bpf-helpers/syscall_parameters_restrictions.cc
++++ b/sandbox/linux/seccomp-bpf-helpers/syscall_parameters_restrictions.cc
+@@ -37,6 +37,7 @@
+ 
+ #if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)) && \
+     !defined(__arm__) && !defined(__aarch64__) &&             \
++    !defined(__riscv) &&                                      \
+     !defined(PTRACE_GET_THREAD_AREA)
+ // Also include asm/ptrace-abi.h since ptrace.h in older libc (for instance
+ // the one in Ubuntu 16.04 LTS) is missing PTRACE_GET_THREAD_AREA.
+@@ -441,7 +442,7 @@ ResultExpr RestrictPtrace() {
+ #endif
+   return Switch(request)
+       .Cases({
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+                  PTRACE_GETREGS, PTRACE_GETFPREGS, PTRACE_GET_THREAD_AREA,
+                  PTRACE_GETREGSET,
+ #endif
+diff --git a/sandbox/linux/seccomp-bpf-helpers/syscall_sets.cc b/sandbox/linux/seccomp-bpf-helpers/syscall_sets.cc
+index 27ea26407..8fc2d3c35 100644
+--- a/sandbox/linux/seccomp-bpf-helpers/syscall_sets.cc
++++ b/sandbox/linux/seccomp-bpf-helpers/syscall_sets.cc
+@@ -103,7 +103,7 @@ bool SyscallSets::IsUmask(int sysno) {
+ // Both EPERM and ENOENT are valid errno unless otherwise noted in comment.
+ bool SyscallSets::IsFileSystem(int sysno) {
+   switch (sysno) {
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_access:  // EPERM not a valid errno.
+     case __NR_chmod:
+     case __NR_chown:
+@@ -136,7 +136,7 @@ bool SyscallSets::IsFileSystem(int sysno) {
+     case __NR_faccessat2:
+     case __NR_fchmodat:
+     case __NR_fchownat:  // Should be called chownat ?
+-#if defined(__x86_64__) || defined(__aarch64__)
++#if defined(__x86_64__) || defined(__aarch64__) || defined(__riscv)
+     case __NR_newfstatat:  // fstatat(). EPERM not a valid errno.
+ #elif defined(__i386__) || defined(__arm__) || \
+     (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_32_BITS))
+@@ -241,7 +241,7 @@ bool SyscallSets::IsAllowedFileSystemAccessViaFd(int sysno) {
+     case __NR_oldfstat:
+ #endif
+ #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_sync_file_range:  // EPERM not a valid errno.
+ #elif defined(__arm__)
+     case __NR_arm_sync_file_range:  // EPERM not a valid errno.
+@@ -260,7 +260,7 @@ bool SyscallSets::IsDeniedFileSystemAccessViaFd(int sysno) {
+ #if defined(__i386__) || defined(__arm__)
+     case __NR_fchown32:
+ #endif
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_getdents:    // EPERM not a valid errno.
+ #endif
+     case __NR_getdents64:  // EPERM not a valid errno.
+@@ -339,7 +339,7 @@ bool SyscallSets::IsProcessPrivilegeChange(int sysno) {
+ bool SyscallSets::IsProcessGroupOrSession(int sysno) {
+   switch (sysno) {
+     case __NR_setpgid:
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_getpgrp:
+ #endif
+     case __NR_setsid:
+@@ -373,7 +373,7 @@ bool SyscallSets::IsAllowedSignalHandling(int sysno) {
+     case __NR_rt_sigqueueinfo:
+     case __NR_rt_sigsuspend:
+     case __NR_rt_tgsigqueueinfo:
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_signalfd:
+ #endif
+     case __NR_signalfd4:
+@@ -397,12 +397,12 @@ bool SyscallSets::IsAllowedOperationOnFd(int sysno) {
+   switch (sysno) {
+     case __NR_close:
+     case __NR_dup:
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_dup2:
+ #endif
+     case __NR_dup3:
+ #if defined(__x86_64__) || defined(__arm__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_shutdown:
+ #endif
+       return true;
+@@ -441,7 +441,7 @@ bool SyscallSets::IsAllowedProcessStartOrDeath(int sysno) {
+       return true;
+     case __NR_clone:  // Should be parameter-restricted.
+     case __NR_setns:  // Privileged.
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_fork:
+ #endif
+ #if defined(__i386__) || defined(__x86_64__)
+@@ -452,7 +452,7 @@ bool SyscallSets::IsAllowedProcessStartOrDeath(int sysno) {
+ #endif
+     case __NR_set_tid_address:
+     case __NR_unshare:
+-#if !defined(__mips__) && !defined(__aarch64__)
++#if !defined(__mips__) && !defined(__aarch64__) && !defined(__riscv)
+     case __NR_vfork:
+ #endif
+     default:
+@@ -477,7 +477,7 @@ bool SyscallSets::IsAllowedFutex(int sysno) {
+ 
+ bool SyscallSets::IsAllowedEpoll(int sysno) {
+   switch (sysno) {
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_epoll_create:
+     case __NR_epoll_wait:
+ #endif
+@@ -499,7 +499,7 @@ bool SyscallSets::IsAllowedEpoll(int sysno) {
+ bool SyscallSets::IsDeniedGetOrModifySocket(int sysno) {
+   switch (sysno) {
+ #if defined(__x86_64__) || defined(__arm__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_accept:
+     case __NR_accept4:
+     case __NR_bind:
+@@ -553,7 +553,7 @@ bool SyscallSets::IsAllowedAddressSpaceAccess(int sysno) {
+     case __NR_mincore:
+     case __NR_mlockall:
+ #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_mmap:
+ #endif
+ #if defined(__i386__) || defined(__arm__) || \
+@@ -586,7 +586,7 @@ bool SyscallSets::IsAllowedGeneralIo(int sysno) {
+     (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_32_BITS))
+     case __NR__llseek:
+ #endif
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_poll:
+ #endif
+     case __NR_ppoll:
+@@ -607,7 +607,7 @@ bool SyscallSets::IsAllowedGeneralIo(int sysno) {
+     case __NR_recv:
+ #endif
+ #if defined(__x86_64__) || defined(__arm__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_recvfrom:  // Could specify source.
+     case __NR_recvmsg:   // Could specify source.
+ #endif
+@@ -622,7 +622,7 @@ bool SyscallSets::IsAllowedGeneralIo(int sysno) {
+     case __NR_send:
+ #endif
+ #if defined(__x86_64__) || defined(__arm__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_sendmsg:  // Could specify destination.
+     case __NR_sendto:   // Could specify destination.
+ #endif
+@@ -671,7 +671,7 @@ bool SyscallSets::IsSeccomp(int sysno) {
+ bool SyscallSets::IsAllowedBasicScheduler(int sysno) {
+   switch (sysno) {
+     case __NR_sched_yield:
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_pause:
+ #endif
+     case __NR_nanosleep:
+@@ -755,7 +755,7 @@ bool SyscallSets::IsNuma(int sysno) {
+     case __NR_getcpu:
+     case __NR_mbind:
+ #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_migrate_pages:
+ #endif
+     case __NR_move_pages:
+@@ -790,7 +790,7 @@ bool SyscallSets::IsGlobalProcessEnvironment(int sysno) {
+   switch (sysno) {
+     case __NR_acct:  // Privileged.
+ #if defined(__i386__) || defined(__x86_64__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+     case __NR_getrlimit:
+ #endif
+ #if defined(__i386__) || defined(__arm__)
+@@ -825,7 +825,7 @@ bool SyscallSets::IsDebug(int sysno) {
+ 
+ bool SyscallSets::IsGlobalSystemStatus(int sysno) {
+   switch (sysno) {
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR__sysctl:
+     case __NR_sysfs:
+ #endif
+@@ -843,7 +843,7 @@ bool SyscallSets::IsGlobalSystemStatus(int sysno) {
+ 
+ bool SyscallSets::IsEventFd(int sysno) {
+   switch (sysno) {
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_eventfd:
+ #endif
+     case __NR_eventfd2:
+@@ -895,7 +895,8 @@ bool SyscallSets::IsKeyManagement(int sysno) {
+ }
+ 
+ #if defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) || \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+ bool SyscallSets::IsSystemVSemaphores(int sysno) {
+   switch (sysno) {
+     case __NR_semctl:
+@@ -915,7 +916,8 @@ bool SyscallSets::IsSystemVSemaphores(int sysno) {
+ 
+ #if defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
+     defined(__aarch64__) ||                                         \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+ // These give a lot of ambient authority and bypass the setuid sandbox.
+ bool SyscallSets::IsSystemVSharedMemory(int sysno) {
+   switch (sysno) {
+@@ -931,7 +933,8 @@ bool SyscallSets::IsSystemVSharedMemory(int sysno) {
+ #endif
+ 
+ #if defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) || \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+ bool SyscallSets::IsSystemVMessageQueue(int sysno) {
+   switch (sysno) {
+     case __NR_msgctl:
+@@ -962,7 +965,8 @@ bool SyscallSets::IsSystemVIpc(int sysno) {
+ 
+ bool SyscallSets::IsAnySystemV(int sysno) {
+ #if defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) || \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+   return IsSystemVMessageQueue(sysno) || IsSystemVSemaphores(sysno) ||
+          IsSystemVSharedMemory(sysno);
+ #elif defined(__i386__) || \
+@@ -999,7 +1003,7 @@ bool SyscallSets::IsAdvancedScheduler(int sysno) {
+ bool SyscallSets::IsInotify(int sysno) {
+   switch (sysno) {
+     case __NR_inotify_add_watch:
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_inotify_init:
+ #endif
+     case __NR_inotify_init1:
+@@ -1137,7 +1141,7 @@ bool SyscallSets::IsMisc(int sysno) {
+ #if defined(__x86_64__)
+     case __NR_tuxcall:
+ #endif
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_vserver:
+ #endif
+       return true;
+@@ -1196,6 +1200,17 @@ bool SyscallSets::IsMipsMisc(int sysno) {
+ }
+ #endif  // defined(__mips__)
+ 
++#if defined(__riscv)
++bool SyscallSets::IsRiscvPrivate(int sysno) {
++  switch (sysno) {
++    case __NR_riscv_flush_icache:
++      return true;
++    default:
++      return false;
++  }
++}
++#endif  // defined(__riscv)
++
+ bool SyscallSets::IsGoogle3Threading(int sysno) {
+   switch (sysno) {
+     case __NR_getitimer:
+diff --git a/sandbox/linux/seccomp-bpf-helpers/syscall_sets.h b/sandbox/linux/seccomp-bpf-helpers/syscall_sets.h
+index 9be7b03ec..41b3605dc 100644
+--- a/sandbox/linux/seccomp-bpf-helpers/syscall_sets.h
++++ b/sandbox/linux/seccomp-bpf-helpers/syscall_sets.h
+@@ -52,7 +52,7 @@ class SANDBOX_EXPORT SyscallSets {
+ #endif
+ 
+ #if defined(__x86_64__) || defined(__arm__) || defined(__mips__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+   static bool IsNetworkSocketInformation(int sysno);
+ #endif
+ 
+@@ -79,18 +79,21 @@ class SANDBOX_EXPORT SyscallSets {
+   static bool IsAsyncIo(int sysno);
+   static bool IsKeyManagement(int sysno);
+ #if defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) || \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+   static bool IsSystemVSemaphores(int sysno);
+ #endif
+ #if defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
+     defined(__aarch64__) ||                                         \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+   // These give a lot of ambient authority and bypass the setuid sandbox.
+   static bool IsSystemVSharedMemory(int sysno);
+ #endif
+ 
+ #if defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) || \
+-    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS))
++    (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_64_BITS)) || \
++    defined(__riscv)
+   static bool IsSystemVMessageQueue(int sysno);
+ #endif
+ 
+@@ -117,6 +120,9 @@ class SANDBOX_EXPORT SyscallSets {
+   static bool IsMipsPrivate(int sysno);
+   static bool IsMipsMisc(int sysno);
+ #endif  // defined(__mips__)
++#if defined(__riscv)
++  static bool IsRiscvPrivate(int sysno);
++#endif
+   static bool IsGoogle3Threading(int sysno);
+ };
+ 
+diff --git a/sandbox/linux/seccomp-bpf/syscall.cc b/sandbox/linux/seccomp-bpf/syscall.cc
+index 02cbb047c..61453ecf9 100644
+--- a/sandbox/linux/seccomp-bpf/syscall.cc
++++ b/sandbox/linux/seccomp-bpf/syscall.cc
+@@ -18,7 +18,7 @@ namespace sandbox {
+ namespace {
+ 
+ #if defined(ARCH_CPU_X86_FAMILY) || defined(ARCH_CPU_ARM_FAMILY) || \
+-    defined(ARCH_CPU_MIPS_FAMILY)
++    defined(ARCH_CPU_MIPS_FAMILY) || defined(ARCH_CPU_RISCV_FAMILY)
+ // Number that's not currently used by any Linux kernel ABIs.
+ const int kInvalidSyscallNumber = 0x351d3;
+ #else
+@@ -308,6 +308,28 @@ asm(// We need to be able to tell the kernel exactly where we made a
+     "2:ret\n"
+     ".cfi_endproc\n"
+     ".size SyscallAsm, .-SyscallAsm\n"
++#elif defined(__riscv)
++    ".text\n"
++    ".align 2\n"
++    ".type SyscallAsm, %function\n"
++    "SyscallAsm:\n"
++    ".cfi_startproc\n"
++    "bgez a0,1f\n"
++    "la a0,2f\n"
++    "j 2f\n"
++    "1:mv a7, a0\n"
++    "ld a0, (t0)\n"
++    "ld a1, 8(t0)\n"
++    "ld a2, 16(t0)\n"
++    "ld a3, 24(t0)\n"
++    "ld a4, 32(t0)\n"
++    "ld a5, 40(t0)\n"
++    "ld a6, 48(t0)\n"
++    // Enter the kernel
++    "scall\n"
++    "2:ret\n"
++    ".cfi_endproc\n"
++    ".size SyscallAsm, .-SyscallAsm\n"
+ #endif
+     );  // asm
+ 
+@@ -425,6 +447,18 @@ intptr_t Syscall::Call(int nr,
+     ret = inout;
+   }
+ 
++#elif defined(__riscv)
++  intptr_t ret;
++  {
++    register intptr_t inout __asm__("a0") = nr;
++    register const intptr_t* data __asm__("t0") = args;
++    asm volatile("jal SyscallAsm\n"
++                 : "+r"(inout)
++                 : "r"(data)
++                 : "memory", "a1", "a2", "a3", "a4", "a5", "a6");
++    ret = inout;
++  }
++
+ #else
+ #error "Unimplemented architecture"
+ #endif
+diff --git a/sandbox/linux/services/credentials.cc b/sandbox/linux/services/credentials.cc
+index e284c59d2..5b5346a27 100644
+--- a/sandbox/linux/services/credentials.cc
++++ b/sandbox/linux/services/credentials.cc
+@@ -80,7 +80,7 @@ bool ChrootToSafeEmptyDir() {
+   pid_t pid = -1;
+   alignas(16) char stack_buf[PTHREAD_STACK_MIN];
+ #if defined(ARCH_CPU_X86_FAMILY) || defined(ARCH_CPU_ARM_FAMILY) || \
+-    defined(ARCH_CPU_MIPS_FAMILY)
++    defined(ARCH_CPU_MIPS_FAMILY) || defined(ARCH_CPU_RISCV_FAMILY)
+   // The stack grows downward.
+   void* stack = stack_buf + sizeof(stack_buf);
+ #else
+diff --git a/sandbox/linux/services/syscall_wrappers.cc b/sandbox/linux/services/syscall_wrappers.cc
+index 7650e983b..bb4bd3323 100644
+--- a/sandbox/linux/services/syscall_wrappers.cc
++++ b/sandbox/linux/services/syscall_wrappers.cc
+@@ -61,7 +61,7 @@ long sys_clone(unsigned long flags,
+ #if defined(ARCH_CPU_X86_64)
+   return syscall(__NR_clone, flags, child_stack, ptid, ctid, tls);
+ #elif defined(ARCH_CPU_X86) || defined(ARCH_CPU_ARM_FAMILY) || \
+-    defined(ARCH_CPU_MIPS_FAMILY)
++    defined(ARCH_CPU_MIPS_FAMILY) || defined(ARCH_CPU_RISCV_FAMILY)
+   // CONFIG_CLONE_BACKWARDS defined.
+   return syscall(__NR_clone, flags, child_stack, ptid, tls, ctid);
+ #endif
+diff --git a/sandbox/linux/syscall_broker/broker_process.cc b/sandbox/linux/syscall_broker/broker_process.cc
+index a55b548a8..39279b947 100644
+--- a/sandbox/linux/syscall_broker/broker_process.cc
++++ b/sandbox/linux/syscall_broker/broker_process.cc
+@@ -122,44 +122,46 @@ bool BrokerProcess::IsSyscallBrokerable(int sysno, bool fast_check) const {
+   // and are default disabled in Android. So, we should refuse to broker them
+   // to be consistent with the platform's restrictions.
+   switch (sysno) {
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_access:
+ #endif
+     case __NR_faccessat:
+     case __NR_faccessat2:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_ACCESS);
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_mkdir:
+ #endif
+     case __NR_mkdirat:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_MKDIR);
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_open:
+ #endif
+     case __NR_openat:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_OPEN);
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_readlink:
+ #endif
+     case __NR_readlinkat:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_READLINK);
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_rename:
+ #endif
++#ifdef __NR_renameat
+     case __NR_renameat:
++#endif
+     case __NR_renameat2:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_RENAME);
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_rmdir:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_RMDIR);
+ #endif
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_stat:
+     case __NR_lstat:
+ #endif
+@@ -169,7 +171,7 @@ bool BrokerProcess::IsSyscallBrokerable(int sysno, bool fast_check) const {
+ #if defined(__NR_fstatat64)
+     case __NR_fstatat64:
+ #endif
+-#if defined(__x86_64__) || defined(__aarch64__)
++#if defined(__x86_64__) || defined(__aarch64__) || defined(__riscv)
+     case __NR_newfstatat:
+ #endif
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_STAT);
+@@ -184,7 +186,7 @@ bool BrokerProcess::IsSyscallBrokerable(int sysno, bool fast_check) const {
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_STAT);
+ #endif
+ 
+-#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID)
++#if !defined(__aarch64__) && !BUILDFLAG(IS_ANDROID) && !defined(__riscv)
+     case __NR_unlink:
+       return !fast_check || policy_->allowed_command_set.test(COMMAND_UNLINK);
+ #endif
+diff --git a/sandbox/linux/system_headers/linux_seccomp.h b/sandbox/linux/system_headers/linux_seccomp.h
+index 8690a96eb..dec2afc74 100644
+--- a/sandbox/linux/system_headers/linux_seccomp.h
++++ b/sandbox/linux/system_headers/linux_seccomp.h
+@@ -39,6 +39,10 @@
+ #define EM_AARCH64 183
+ #endif
+ 
++#ifndef EM_RISCV
++#define EM_RISCV 243
++#endif
++
+ #ifndef __AUDIT_ARCH_64BIT
+ #define __AUDIT_ARCH_64BIT 0x80000000
+ #endif
+@@ -71,6 +75,10 @@
+ #define AUDIT_ARCH_AARCH64 (EM_AARCH64 | __AUDIT_ARCH_64BIT | __AUDIT_ARCH_LE)
+ #endif
+ 
++#ifndef AUDIT_ARCH_RISCV64
++#define AUDIT_ARCH_RISCV64 (EM_RISCV|__AUDIT_ARCH_64BIT|__AUDIT_ARCH_LE)
++#endif
++
+ // For prctl.h
+ #ifndef PR_SET_SECCOMP
+ #define PR_SET_SECCOMP               22
+diff --git a/sandbox/linux/system_headers/linux_signal.h b/sandbox/linux/system_headers/linux_signal.h
+index 69ccaf108..2ffe30973 100644
+--- a/sandbox/linux/system_headers/linux_signal.h
++++ b/sandbox/linux/system_headers/linux_signal.h
+@@ -13,7 +13,7 @@
+ // (not undefined, but defined different values and in different memory
+ // layouts). So, fill the gap here.
+ #if defined(__i386__) || defined(__x86_64__) || defined(__arm__) || \
+-    defined(__aarch64__)
++    defined(__aarch64__) || defined(__riscv)
+ 
+ #define LINUX_SIGHUP 1
+ #define LINUX_SIGINT 2
+diff --git a/sandbox/linux/system_headers/linux_stat.h b/sandbox/linux/system_headers/linux_stat.h
+index 3aae8cbce..74977adb5 100644
+--- a/sandbox/linux/system_headers/linux_stat.h
++++ b/sandbox/linux/system_headers/linux_stat.h
+@@ -150,7 +150,7 @@ struct kernel_stat {
+   int st_blocks;
+   int st_pad4[14];
+ };
+-#elif defined(__aarch64__)
++#elif defined(__aarch64__) || defined(__riscv)
+ struct kernel_stat {
+   unsigned long st_dev;
+   unsigned long st_ino;
+diff --git a/sandbox/linux/system_headers/linux_syscalls.h b/sandbox/linux/system_headers/linux_syscalls.h
+index 438147b40..d6de8c1cb 100644
+--- a/sandbox/linux/system_headers/linux_syscalls.h
++++ b/sandbox/linux/system_headers/linux_syscalls.h
+@@ -35,5 +35,9 @@
+ #include "sandbox/linux/system_headers/arm64_linux_syscalls.h"
+ #endif
+ 
++#if defined(__riscv) && __riscv_xlen == 64
++#include "sandbox/linux/system_headers/riscv64_linux_syscalls.h"
++#endif
++
+ #endif  // SANDBOX_LINUX_SYSTEM_HEADERS_LINUX_SYSCALLS_H_
+ 
+diff --git a/sandbox/policy/linux/bpf_cros_amd_gpu_policy_linux.cc b/sandbox/policy/linux/bpf_cros_amd_gpu_policy_linux.cc
+index df2567f74..41e158a29 100644
+--- a/sandbox/policy/linux/bpf_cros_amd_gpu_policy_linux.cc
++++ b/sandbox/policy/linux/bpf_cros_amd_gpu_policy_linux.cc
+@@ -38,7 +38,7 @@ ResultExpr CrosAmdGpuProcessPolicy::EvaluateSyscall(int sysno) const {
+     case __NR_sched_setscheduler:
+     case __NR_sysinfo:
+     case __NR_uname:
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_readlink:
+     case __NR_stat:
+ #endif
+diff --git a/sandbox/policy/linux/bpf_gpu_policy_linux.cc b/sandbox/policy/linux/bpf_gpu_policy_linux.cc
+index 35ccbb7a7..65a0587e2 100644
+--- a/sandbox/policy/linux/bpf_gpu_policy_linux.cc
++++ b/sandbox/policy/linux/bpf_gpu_policy_linux.cc
+@@ -73,7 +73,7 @@ ResultExpr GpuProcessPolicy::EvaluateSyscall(int sysno) const {
+     (defined(ARCH_CPU_MIPS_FAMILY) && defined(ARCH_CPU_32_BITS))
+     case __NR_ftruncate64:
+ #endif
+-#if !defined(__aarch64__)
++#if !defined(__aarch64__) && !defined(__riscv)
+     case __NR_getdents:
+ #endif
+     case __NR_getdents64:
+diff --git a/third_party/angle/gni/angle.gni b/third_party/angle/gni/angle.gni
+index 0b431d651..ee219785c 100644
+--- a/third_party/angle/gni/angle.gni
++++ b/third_party/angle/gni/angle.gni
+@@ -104,7 +104,8 @@ declare_args() {
+ 
+   if (current_cpu == "arm64" || current_cpu == "x64" ||
+       current_cpu == "mips64el" || current_cpu == "s390x" ||
+-      current_cpu == "ppc64" || current_cpu == "loong64") {
++      current_cpu == "ppc64" || current_cpu == "loong64" ||
++      current_cpu == "riscv64") {
+     angle_64bit_current_cpu = true
+   } else if (current_cpu == "arm" || current_cpu == "x86" ||
+              current_cpu == "mipsel" || current_cpu == "s390" ||
+diff --git a/third_party/angle/src/common/platform.h b/third_party/angle/src/common/platform.h
+index d646643b1..bdf2915e8 100644
+--- a/third_party/angle/src/common/platform.h
++++ b/third_party/angle/src/common/platform.h
+@@ -108,7 +108,7 @@
+ #endif
+ 
+ // Mips and arm devices need to include stddef for size_t.
+-#if defined(__mips__) || defined(__arm__) || defined(__aarch64__)
++#if defined(__mips__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv)
+ #    include <stddef.h>
+ #endif
+ 
+diff --git a/third_party/crashpad/crashpad/minidump/minidump_context.h b/third_party/crashpad/crashpad/minidump/minidump_context.h
+index 30988d8cb..3476ea996 100644
+--- a/third_party/crashpad/crashpad/minidump/minidump_context.h
++++ b/third_party/crashpad/crashpad/minidump/minidump_context.h
+@@ -637,6 +637,41 @@ struct MinidumpContextMIPS64 {
+   uint64_t fir;
+ };
+ 
++//! \brief 64bit RISC-V-specifc flags for MinidumpContextRISCV64::context_flags.
++//! Based on minidump_cpu_riscv64.h from breakpad
++enum MinidumpContextRISCV64Flags : uint32_t {
++  //! \brief Identifies the context structure as RISCV64.
++  kMinidumpContextRISCV64 = 0x00080000,
++
++  //! \brief Indicates the validity of integer registers.
++  //!
++  //! Registers `x1`-`x31` and pc are valid.
++  kMinidumpContextRISCV64Integer = kMinidumpContextRISCV64 | 0x00000002,
++
++  //! \brief Indicates the validity of floating point registers.
++  //!
++  //! Floating point registers `f0`-`f31`, and `fcsr` are valid
++  kMinidumpContextRISCV64FloatingPoint = kMinidumpContextRISCV64 | 0x00000004,
++
++  //! \brief Indicates the validity of all registers.
++  kMinidumpContextRISCV64All = kMinidumpContextRISCV64Integer |
++                              kMinidumpContextRISCV64FloatingPoint,
++};
++
++//! \brief A 64bit RISCV CPU context (register state) carried in a minidump file.
++struct MinidumpContextRISCV64 {
++  uint64_t context_flags;
++
++  //! \brief General purpose registers.
++  uint64_t regs[32];
++
++  //! \brief FPU registers.
++  uint64_t fpregs[32];
++
++  //! \brief FPU status register.
++  uint64_t fcsr;
++};
++
+ }  // namespace crashpad
+ 
+ #endif  // CRASHPAD_MINIDUMP_MINIDUMP_CONTEXT_H_
+diff --git a/third_party/crashpad/crashpad/minidump/minidump_context_writer.cc b/third_party/crashpad/crashpad/minidump/minidump_context_writer.cc
+index 5f741ed74..87c0556ff 100644
+--- a/third_party/crashpad/crashpad/minidump/minidump_context_writer.cc
++++ b/third_party/crashpad/crashpad/minidump/minidump_context_writer.cc
+@@ -102,6 +102,13 @@ MinidumpContextWriter::CreateFromSnapshot(const CPUContext* context_snapshot) {
+       break;
+     }
+ 
++    case kCPUArchitectureRISCV64: {
++      context = std::make_unique<MinidumpContextRISCV64Writer>();
++      reinterpret_cast<MinidumpContextRISCV64Writer*>(context.get())
++          ->InitializeFromSnapshot(context_snapshot->riscv64);
++      break;
++    }
++
+     default: {
+       LOG(ERROR) << "unknown context architecture "
+                  << context_snapshot->architecture;
+@@ -556,4 +563,41 @@ size_t MinidumpContextMIPS64Writer::ContextSize() const {
+   return sizeof(context_);
+ }
+ 
++MinidumpContextRISCV64Writer::MinidumpContextRISCV64Writer()
++    : MinidumpContextWriter(), context_() {
++  context_.context_flags = kMinidumpContextRISCV64;
++}
++
++MinidumpContextRISCV64Writer::~MinidumpContextRISCV64Writer() = default;
++
++void MinidumpContextRISCV64Writer::InitializeFromSnapshot(
++    const CPUContextRISCV64* context_snapshot) {
++  DCHECK_EQ(state(), kStateMutable);
++  DCHECK_EQ(context_.context_flags, kMinidumpContextRISCV64);
++
++  context_.context_flags = kMinidumpContextRISCV64All;
++
++  static_assert(sizeof(context_.regs) == sizeof(context_snapshot->regs),
++                "GPRs size mismatch");
++  memcpy(context_.regs, context_snapshot->regs, sizeof(context_.regs));
++
++  static_assert(sizeof(context_.fpregs) == sizeof(context_snapshot->fpregs),
++                "FPRs size mismatch");
++  memcpy(context_.fpregs,
++         context_snapshot->fpregs,
++         sizeof(context_.fpregs));
++  context_.fcsr = context_snapshot->fcsr;
++}
++
++bool MinidumpContextRISCV64Writer::WriteObject(
++    FileWriterInterface* file_writer) {
++  DCHECK_EQ(state(), kStateWritable);
++  return file_writer->Write(&context_, sizeof(context_));
++}
++
++size_t MinidumpContextRISCV64Writer::ContextSize() const {
++  DCHECK_GE(state(), kStateFrozen);
++  return sizeof(context_);
++}
++
+ }  // namespace crashpad
+diff --git a/third_party/crashpad/crashpad/minidump/minidump_context_writer.h b/third_party/crashpad/crashpad/minidump/minidump_context_writer.h
+index 6660be437..62daaa62a 100644
+--- a/third_party/crashpad/crashpad/minidump/minidump_context_writer.h
++++ b/third_party/crashpad/crashpad/minidump/minidump_context_writer.h
+@@ -369,6 +369,49 @@ class MinidumpContextMIPS64Writer final : public MinidumpContextWriter {
+   MinidumpContextMIPS64 context_;
+ };
+ 
++//! \brief The writer for a MinidumpContextRISCV64 structure in a minidump file.
++class MinidumpContextRISCV64Writer final : public MinidumpContextWriter {
++ public:
++  MinidumpContextRISCV64Writer();
++
++  MinidumpContextRISCV64Writer(const MinidumpContextRISCV64Writer&) = delete;
++  MinidumpContextRISCV64Writer& operator=(const MinidumpContextRISCV64Writer&) =
++      delete;
++
++  ~MinidumpContextRISCV64Writer() override;
++
++  //! \brief Initializes the MinidumpContextRISCV based on \a context_snapshot.
++  //!
++  //! \param[in] context_snapshot The context snapshot to use as source data.
++  //!
++  //! \note Valid in #kStateMutable. No mutation of context() may be done before
++  //!     calling this method, and it is not normally necessary to alter
++  //!     context() after calling this method.
++  void InitializeFromSnapshot(const CPUContextRISCV64* context_snapshot);
++
++  //! \brief Returns a pointer to the context structure that this object will
++  //!     write.
++  //!
++  //! \attention This returns a non-`const` pointer to this object’s private
++  //!     data so that a caller can populate the context structure directly.
++  //!     This is done because providing setter interfaces to each field in the
++  //!     context structure would be unwieldy and cumbersome. Care must be taken
++  //!     to populate the context structure correctly. The context structure
++  //!     must only be modified while this object is in the #kStateMutable
++  //!     state.
++  MinidumpContextRISCV64* context() { return &context_; }
++
++ protected:
++  // MinidumpWritable:
++  bool WriteObject(FileWriterInterface* file_writer) override;
++
++  // MinidumpContextWriter:
++  size_t ContextSize() const override;
++
++ private:
++  MinidumpContextRISCV64 context_;
++};
++
+ }  // namespace crashpad
+ 
+ #endif  // CRASHPAD_MINIDUMP_MINIDUMP_CONTEXT_WRITER_H_
+diff --git a/third_party/crashpad/crashpad/minidump/minidump_misc_info_writer.cc b/third_party/crashpad/crashpad/minidump/minidump_misc_info_writer.cc
+index 133ae3086..ce44c0614 100644
+--- a/third_party/crashpad/crashpad/minidump/minidump_misc_info_writer.cc
++++ b/third_party/crashpad/crashpad/minidump/minidump_misc_info_writer.cc
+@@ -175,6 +175,10 @@ std::string MinidumpMiscInfoDebugBuildString() {
+   static constexpr char kCPU[] = "mips";
+ #elif defined(ARCH_CPU_MIPS64EL)
+   static constexpr char kCPU[] = "mips64";
++#elif defined(ARCH_CPU_RISCV32)
++  static constexpr char kCPU[] = "riscv32";
++#elif defined(ARCH_CPU_RISCV64)
++  static constexpr char kCPU[] = "riscv64";
+ #else
+ #error define kCPU for this CPU
+ #endif
+diff --git a/third_party/crashpad/crashpad/snapshot/capture_memory.cc b/third_party/crashpad/crashpad/snapshot/capture_memory.cc
+index 0a465d22f..26c598605 100644
+--- a/third_party/crashpad/crashpad/snapshot/capture_memory.cc
++++ b/third_party/crashpad/crashpad/snapshot/capture_memory.cc
+@@ -117,6 +117,16 @@ void CaptureMemory::PointedToByContext(const CPUContext& context,
+   for (size_t i = 0; i < std::size(context.mipsel->regs); ++i) {
+     MaybeCaptureMemoryAround(delegate, context.mipsel->regs[i]);
+   }
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  if (context.architecture == kCPUArchitectureRISCV64) {
++    for (size_t i = 0; i < std::size(context.riscv64->regs); ++i) {
++      MaybeCaptureMemoryAround(delegate, context.riscv64->regs[i]);
++    }
++  } else {
++    for (size_t i = 0; i < std::size(context.riscv32->regs); ++i) {
++      MaybeCaptureMemoryAround(delegate, context.riscv32->regs[i]);
++    }
++  }
+ #else
+ #error Port.
+ #endif
+diff --git a/third_party/crashpad/crashpad/snapshot/cpu_architecture.h b/third_party/crashpad/crashpad/snapshot/cpu_architecture.h
+index 4003a9290..fc8a9d653 100644
+--- a/third_party/crashpad/crashpad/snapshot/cpu_architecture.h
++++ b/third_party/crashpad/crashpad/snapshot/cpu_architecture.h
+@@ -43,7 +43,13 @@ enum CPUArchitecture {
+   kCPUArchitectureMIPSEL,
+ 
+   //! \brief 64-bit MIPSEL.
+-  kCPUArchitectureMIPS64EL
++  kCPUArchitectureMIPS64EL,
++
++  //! \brief 32-bit RISCV.
++  kCPUArchitectureRISCV32,
++
++  //! \brief 64-bit RISCV.
++  kCPUArchitectureRISCV64
+ };
+ 
+ }  // namespace crashpad
+diff --git a/third_party/crashpad/crashpad/snapshot/cpu_context.cc b/third_party/crashpad/crashpad/snapshot/cpu_context.cc
+index 6eaa853fd..9c511e8c7 100644
+--- a/third_party/crashpad/crashpad/snapshot/cpu_context.cc
++++ b/third_party/crashpad/crashpad/snapshot/cpu_context.cc
+@@ -226,10 +226,12 @@ bool CPUContext::Is64Bit() const {
+     case kCPUArchitectureX86_64:
+     case kCPUArchitectureARM64:
+     case kCPUArchitectureMIPS64EL:
++    case kCPUArchitectureRISCV64:
+       return true;
+     case kCPUArchitectureX86:
+     case kCPUArchitectureARM:
+     case kCPUArchitectureMIPSEL:
++    case kCPUArchitectureRISCV32:
+       return false;
+     default:
+       NOTREACHED();
+diff --git a/third_party/crashpad/crashpad/snapshot/cpu_context.h b/third_party/crashpad/crashpad/snapshot/cpu_context.h
+index 7bc252be1..bdd95b781 100644
+--- a/third_party/crashpad/crashpad/snapshot/cpu_context.h
++++ b/third_party/crashpad/crashpad/snapshot/cpu_context.h
+@@ -362,6 +362,20 @@ struct CPUContextMIPS64 {
+   uint64_t fir;
+ };
+ 
++//! \brief A context structure carrying RISCV32 CPU state.
++struct CPUContextRISCV32 {
++  uint32_t regs[32];
++  uint64_t fpregs[32];
++  uint32_t fcsr;
++};
++
++//! \brief A context structure carrying RISCV64 CPU state.
++struct CPUContextRISCV64 {
++  uint64_t regs[32];
++  uint64_t fpregs[32];
++  uint32_t fcsr;
++};
++
+ //! \brief A context structure capable of carrying the context of any supported
+ //!     CPU architecture.
+ struct CPUContext {
+@@ -402,6 +416,8 @@ struct CPUContext {
+     CPUContextARM64* arm64;
+     CPUContextMIPS* mipsel;
+     CPUContextMIPS64* mips64;
++    CPUContextRISCV32* riscv32;
++    CPUContextRISCV64* riscv64;
+   };
+ };
+ 
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.cc b/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.cc
+index 21db23432..fb8ab4ae8 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.cc
++++ b/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.cc
+@@ -266,6 +266,30 @@ void InitializeCPUContextARM64_OnlyFPSIMD(
+   context->fpcr = float_context.fpcr;
+ }
+ 
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++
++template <typename Traits>
++void InitializeCPUContextRISCV(
++    const typename Traits::SignalThreadContext& thread_context,
++    const typename Traits::SignalFloatContext& float_context,
++    typename Traits::CPUContext* context) {
++  static_assert(sizeof(context->regs) == sizeof(thread_context),
++                "registers size mismatch");
++  static_assert(sizeof(context->fpregs) == sizeof(float_context.f),
++                "fp registers size mismatch");
++  memcpy(&context->regs, &thread_context, sizeof(context->regs));
++  memcpy(&context->fpregs, &float_context.f, sizeof(context->fpregs));
++  context->fcsr = float_context.fcsr;
++}
++template void InitializeCPUContextRISCV<ContextTraits32>(
++    const ContextTraits32::SignalThreadContext& thread_context,
++    const ContextTraits32::SignalFloatContext& float_context,
++    ContextTraits32::CPUContext* context);
++template void InitializeCPUContextRISCV<ContextTraits64>(
++    const ContextTraits64::SignalThreadContext& thread_context,
++    const ContextTraits64::SignalFloatContext& float_context,
++    ContextTraits64::CPUContext* context);
++
+ #endif  // ARCH_CPU_X86_FAMILY
+ 
+ }  // namespace internal
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.h b/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.h
+index 1ea5eecda..5f1044f65 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.h
++++ b/third_party/crashpad/crashpad/snapshot/linux/cpu_context_linux.h
+@@ -174,6 +174,22 @@ void InitializeCPUContextMIPS(
+ 
+ #endif  // ARCH_CPU_MIPS_FAMILY || DOXYGEN
+ 
++#if defined(ARCH_CPU_RISCV_FAMILY) || DOXYGEN
++
++//! \brief Initializes a CPUContextRISCV structure from native context
++//!     structures on Linux.
++//!
++//! \param[in] thread_context The native thread context.
++//! \param[in] float_context The native float context.
++//! \param[out] context The CPUContextRISCV structure to initialize.
++template <typename Traits>
++void InitializeCPUContextRISCV(
++    const typename Traits::SignalThreadContext& thread_context,
++    const typename Traits::SignalFloatContext& float_context,
++    typename Traits::CPUContext* context);
++
++#endif  // ARCH_CPU_RISCV_FAMILY || DOXYGEN
++
+ }  // namespace internal
+ }  // namespace crashpad
+ 
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.cc b/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.cc
+index 4e6ec11f8..b48832087 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.cc
++++ b/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.cc
+@@ -325,6 +325,61 @@ bool ExceptionSnapshotLinux::ReadContext<ContextTraits64>(
+       reader, context_address, context_.mips64);
+ }
+ 
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++
++template <typename Traits>
++static bool ReadContext(ProcessReaderLinux* reader,
++                        LinuxVMAddress context_address,
++                        typename Traits::CPUContext* dest_context) {
++  const ProcessMemory* memory = reader->Memory();
++
++  LinuxVMAddress gregs_address = context_address +
++                                 offsetof(UContext<Traits>, mcontext) +
++                                 offsetof(typename Traits::MContext, gregs);
++
++  typename Traits::SignalThreadContext thread_context;
++  if (!memory->Read(gregs_address, sizeof(thread_context), &thread_context)) {
++    LOG(ERROR) << "Couldn't read gregs";
++    return false;
++  }
++
++  LinuxVMAddress fpregs_address = context_address +
++                                  offsetof(UContext<Traits>, mcontext) +
++                                  offsetof(typename Traits::MContext, fpregs);
++
++  typename Traits::SignalFloatContext fp_context;
++  if (!memory->Read(fpregs_address, sizeof(fp_context), &fp_context)) {
++    LOG(ERROR) << "Couldn't read fpregs";
++    return false;
++  }
++
++  InitializeCPUContextRISCV<Traits>(thread_context, fp_context, dest_context);
++
++  return true;
++}
++
++template <>
++bool ExceptionSnapshotLinux::ReadContext<ContextTraits32>(
++    ProcessReaderLinux* reader,
++    LinuxVMAddress context_address) {
++  context_.architecture = kCPUArchitectureRISCV32;
++  context_.riscv32 = &context_union_.riscv32;
++
++  return internal::ReadContext<ContextTraits32>(
++      reader, context_address, context_.riscv32);
++}
++
++template <>
++bool ExceptionSnapshotLinux::ReadContext<ContextTraits64>(
++    ProcessReaderLinux* reader,
++    LinuxVMAddress context_address) {
++  context_.architecture = kCPUArchitectureRISCV64;
++  context_.riscv64 = &context_union_.riscv64;
++
++  return internal::ReadContext<ContextTraits64>(
++      reader, context_address, context_.riscv64);
++}
++
+ #endif  // ARCH_CPU_X86_FAMILY
+ 
+ bool ExceptionSnapshotLinux::Initialize(
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.h b/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.h
+index 3ea3d931f..c6e913238 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.h
++++ b/third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.h
+@@ -89,6 +89,9 @@ class ExceptionSnapshotLinux final : public ExceptionSnapshot {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+     CPUContextMIPS mipsel;
+     CPUContextMIPS64 mips64;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++    CPUContextRISCV32 riscv32;
++    CPUContextRISCV64 riscv64;
+ #endif
+   } context_union_;
+   CPUContext context_;
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/process_reader_linux.cc b/third_party/crashpad/crashpad/snapshot/linux/process_reader_linux.cc
+index 8ec0edc6d..001efc569 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/process_reader_linux.cc
++++ b/third_party/crashpad/crashpad/snapshot/linux/process_reader_linux.cc
+@@ -127,6 +127,9 @@ void ProcessReaderLinux::Thread::InitializeStack(ProcessReaderLinux* reader) {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+   stack_pointer = reader->Is64Bit() ? thread_info.thread_context.t64.regs[29]
+                                     : thread_info.thread_context.t32.regs[29];
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  stack_pointer = reader->Is64Bit() ? thread_info.thread_context.t64.sp
++                                    : thread_info.thread_context.t32.sp;
+ #else
+ #error Port.
+ #endif
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/signal_context.h b/third_party/crashpad/crashpad/snapshot/linux/signal_context.h
+index 6ac7adea4..9a5f39db2 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/signal_context.h
++++ b/third_party/crashpad/crashpad/snapshot/linux/signal_context.h
+@@ -422,6 +422,67 @@ static_assert(offsetof(UContext<ContextTraits64>, mcontext.fpregs) ==
+               "context offset mismatch");
+ #endif
+ 
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++
++struct MContext32 {
++  uint32_t gregs[32];
++  uint64_t fpregs[32];
++  unsigned int fcsr;
++};
++
++struct MContext64 {
++  uint64_t gregs[32];
++  uint64_t fpregs[32];
++  unsigned int fcsr;
++};
++
++struct ContextTraits32 : public Traits32 {
++  using MContext = MContext32;
++  using SignalThreadContext = ThreadContext::t32_t;
++  using SignalFloatContext = FloatContext::f32_t;
++  using CPUContext = CPUContextRISCV32;
++};
++
++struct ContextTraits64 : public Traits64 {
++  using MContext = MContext64;
++  using SignalThreadContext = ThreadContext::t64_t;
++  using SignalFloatContext = FloatContext::f64_t;
++  using CPUContext = CPUContextRISCV64;
++};
++
++template <typename Traits>
++struct UContext {
++  typename Traits::ULong flags;
++  typename Traits::Address link;
++  SignalStack<Traits> stack;
++  Sigset<Traits> sigmask;
++  char padding[128 - sizeof(sigmask)];
++  typename Traits::Char_64Only padding2[8];
++  typename Traits::MContext mcontext;
++};
++
++#if defined(ARCH_CPU_RISCV32)
++static_assert(offsetof(UContext<ContextTraits32>, mcontext) ==
++                  offsetof(ucontext_t, uc_mcontext),
++              "context offset mismatch");
++static_assert(offsetof(UContext<ContextTraits32>, mcontext.gregs) ==
++                  offsetof(ucontext_t, uc_mcontext.__gregs),
++              "context offset mismatch");
++static_assert(offsetof(UContext<ContextTraits32>, mcontext.fpregs) ==
++                  offsetof(ucontext_t, uc_mcontext.__fpregs),
++              "context offset mismatch");
++#elif defined(ARCH_CPU_RISCV64)
++static_assert(offsetof(UContext<ContextTraits64>, mcontext) ==
++                  offsetof(ucontext_t, uc_mcontext),
++              "context offset mismatch");
++static_assert(offsetof(UContext<ContextTraits64>, mcontext.gregs) ==
++                  offsetof(ucontext_t, uc_mcontext.__gregs),
++              "context offset mismatch");
++static_assert(offsetof(UContext<ContextTraits64>, mcontext.fpregs) ==
++                  offsetof(ucontext_t, uc_mcontext.__fpregs),
++              "context offset mismatch");
++#endif
++
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/system_snapshot_linux.cc b/third_party/crashpad/crashpad/snapshot/linux/system_snapshot_linux.cc
+index 848715510..8b8e9c70c 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/system_snapshot_linux.cc
++++ b/third_party/crashpad/crashpad/snapshot/linux/system_snapshot_linux.cc
+@@ -205,6 +205,9 @@ CPUArchitecture SystemSnapshotLinux::GetCPUArchitecture() const {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+   return process_reader_->Is64Bit() ? kCPUArchitectureMIPS64EL
+                                     : kCPUArchitectureMIPSEL;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  return process_reader_->Is64Bit() ? kCPUArchitectureRISCV64
++                                    : kCPUArchitectureRISCV32;
+ #else
+ #error port to your architecture
+ #endif
+@@ -220,6 +223,9 @@ uint32_t SystemSnapshotLinux::CPURevision() const {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+   // Not implementable on MIPS
+   return 0;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  // Not implementable on RISCV
++  return 0;
+ #else
+ #error port to your architecture
+ #endif
+@@ -240,6 +246,9 @@ std::string SystemSnapshotLinux::CPUVendor() const {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+   // Not implementable on MIPS
+   return std::string();
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  // Not implementable on RISCV
++  return std::string();
+ #else
+ #error port to your architecture
+ #endif
+@@ -373,6 +382,9 @@ bool SystemSnapshotLinux::NXEnabled() const {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+   // Not implementable on MIPS
+   return false;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  // Not implementable on RISCV
++  return false;
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.cc b/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.cc
+index ba3340109..e24e3009c 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.cc
++++ b/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.cc
+@@ -190,6 +190,22 @@ bool ThreadSnapshotLinux::Initialize(
+         thread.thread_info.float_context.f32,
+         context_.mipsel);
+   }
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++  if (process_reader->Is64Bit()) {
++    context_.architecture = kCPUArchitectureRISCV64;
++    context_.riscv64 = &context_union_.riscv64;
++    InitializeCPUContextRISCV<ContextTraits64>(
++	thread.thread_info.thread_context.t64,
++	thread.thread_info.float_context.f64,
++	context_.riscv64);
++  } else {
++    context_.architecture = kCPUArchitectureRISCV32;
++    context_.riscv32 = &context_union_.riscv32;
++    InitializeCPUContextRISCV<ContextTraits32>(
++	thread.thread_info.thread_context.t32,
++	thread.thread_info.float_context.f32,
++	context_.riscv32);
++  }
+ #else
+ #error Port.
+ #endif
+diff --git a/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.h b/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.h
+index bd03f5820..39d7f6943 100644
+--- a/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.h
++++ b/third_party/crashpad/crashpad/snapshot/linux/thread_snapshot_linux.h
+@@ -74,6 +74,9 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+     CPUContextMIPS mipsel;
+     CPUContextMIPS64 mips64;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++    CPUContextRISCV32 riscv32;
++    CPUContextRISCV64 riscv64;
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+diff --git a/third_party/crashpad/crashpad/util/linux/ptracer.cc b/third_party/crashpad/crashpad/util/linux/ptracer.cc
+index 25c89ea95..7e3324f86 100644
+--- a/third_party/crashpad/crashpad/util/linux/ptracer.cc
++++ b/third_party/crashpad/crashpad/util/linux/ptracer.cc
+@@ -398,6 +398,51 @@ bool GetThreadArea64(pid_t tid,
+   return true;
+ }
+ 
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++
++template <typename Destination>
++bool GetRegisterSet(pid_t tid, int set, Destination* dest, bool can_log) {
++  iovec iov;
++  iov.iov_base = dest;
++  iov.iov_len = sizeof(*dest);
++  if (ptrace(PTRACE_GETREGSET, tid, reinterpret_cast<void*>(set), &iov) != 0) {
++    PLOG_IF(ERROR, can_log) << "ptrace";
++    return false;
++  }
++  if (iov.iov_len != sizeof(*dest)) {
++    LOG_IF(ERROR, can_log) << "Unexpected registers size";
++    return false;
++  }
++  return true;
++}
++
++bool GetFloatingPointRegisters32(pid_t tid,
++                                 FloatContext* context,
++                                 bool can_log) {
++  return false;
++}
++
++bool GetFloatingPointRegisters64(pid_t tid,
++                                 FloatContext* context,
++                                 bool can_log) {
++  return GetRegisterSet(tid, NT_PRFPREG, &context->f64.f, can_log);
++}
++
++bool GetThreadArea32(pid_t tid,
++                     const ThreadContext& context,
++                     LinuxVMAddress* address,
++                     bool can_log) {
++  return false;
++}
++
++bool GetThreadArea64(pid_t tid,
++                     const ThreadContext& context,
++                     LinuxVMAddress* address,
++                     bool can_log) {
++  *address = context.t64.tp;
++  return true;
++}
++
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+diff --git a/third_party/crashpad/crashpad/util/linux/thread_info.h b/third_party/crashpad/crashpad/util/linux/thread_info.h
+index 9f60bd3eb..a1a443db0 100644
+--- a/third_party/crashpad/crashpad/util/linux/thread_info.h
++++ b/third_party/crashpad/crashpad/util/linux/thread_info.h
+@@ -80,6 +80,40 @@ union ThreadContext {
+     uint32_t cp0_status;
+     uint32_t cp0_cause;
+     uint32_t padding1_;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++    // Reflects user_regs_struct in asm/ptrace.h.
++    uint32_t pc;
++    uint32_t ra;
++    uint32_t sp;
++    uint32_t gp;
++    uint32_t tp;
++    uint32_t t0;
++    uint32_t t1;
++    uint32_t t2;
++    uint32_t s0;
++    uint32_t s1;
++    uint32_t a0;
++    uint32_t a1;
++    uint32_t a2;
++    uint32_t a3;
++    uint32_t a4;
++    uint32_t a5;
++    uint32_t a6;
++    uint32_t a7;
++    uint32_t s2;
++    uint32_t s3;
++    uint32_t s4;
++    uint32_t s5;
++    uint32_t s6;
++    uint32_t s7;
++    uint32_t s8;
++    uint32_t s9;
++    uint32_t s10;
++    uint32_t s11;
++    uint32_t t3;
++    uint32_t t4;
++    uint32_t t5;
++    uint32_t t6;
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+@@ -133,6 +167,40 @@ union ThreadContext {
+     uint64_t cp0_badvaddr;
+     uint64_t cp0_status;
+     uint64_t cp0_cause;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++    // Reflects user_regs_struct in asm/ptrace.h.
++    uint64_t pc;
++    uint64_t ra;
++    uint64_t sp;
++    uint64_t gp;
++    uint64_t tp;
++    uint64_t t0;
++    uint64_t t1;
++    uint64_t t2;
++    uint64_t s0;
++    uint64_t s1;
++    uint64_t a0;
++    uint64_t a1;
++    uint64_t a2;
++    uint64_t a3;
++    uint64_t a4;
++    uint64_t a5;
++    uint64_t a6;
++    uint64_t a7;
++    uint64_t s2;
++    uint64_t s3;
++    uint64_t s4;
++    uint64_t s5;
++    uint64_t s6;
++    uint64_t s7;
++    uint64_t s8;
++    uint64_t s9;
++    uint64_t s10;
++    uint64_t s11;
++    uint64_t t3;
++    uint64_t t4;
++    uint64_t t5;
++    uint64_t t6;
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+@@ -144,11 +212,12 @@ union ThreadContext {
+   using NativeThreadContext = user_regs;
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+ // No appropriate NativeThreadsContext type available for MIPS
++#elif defined(ARCH_CPU_RISCV_FAMILY)
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY || ARCH_CPU_ARM64
+ 
+-#if !defined(ARCH_CPU_MIPS_FAMILY)
++#if !defined(ARCH_CPU_MIPS_FAMILY) && !defined(ARCH_CPU_RISCV_FAMILY)
+ #if defined(ARCH_CPU_32_BITS)
+   static_assert(sizeof(t32_t) == sizeof(NativeThreadContext), "Size mismatch");
+ #else  // ARCH_CPU_64_BITS
+@@ -219,6 +288,9 @@ union FloatContext {
+     } fpregs[32];
+     uint32_t fpcsr;
+     uint32_t fpu_id;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++    uint64_t f[32];
++    uint32_t fcsr;
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+@@ -253,6 +325,9 @@ union FloatContext {
+     double fpregs[32];
+     uint32_t fpcsr;
+     uint32_t fpu_id;
++#elif defined(ARCH_CPU_RISCV_FAMILY)
++    uint64_t f[32];
++    uint32_t fcsr;
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86_FAMILY
+@@ -282,6 +357,7 @@ union FloatContext {
+   static_assert(sizeof(f64) == sizeof(user_fpsimd_struct), "Size mismatch");
+ #elif defined(ARCH_CPU_MIPS_FAMILY)
+ // No appropriate floating point context native type for available MIPS.
++#elif defined(ARCH_CPU_RISCV_FAMILY)
+ #else
+ #error Port.
+ #endif  // ARCH_CPU_X86
+diff --git a/third_party/crashpad/crashpad/util/net/http_transport_libcurl.cc b/third_party/crashpad/crashpad/util/net/http_transport_libcurl.cc
+index d5c9177f9..b64498d29 100644
+--- a/third_party/crashpad/crashpad/util/net/http_transport_libcurl.cc
++++ b/third_party/crashpad/crashpad/util/net/http_transport_libcurl.cc
+@@ -237,6 +237,8 @@ std::string UserAgent() {
+ #elif defined(ARCH_CPU_BIG_ENDIAN)
+     static constexpr char arch[] = "aarch64_be";
+ #endif
++#elif defined(ARCH_CPU_RISCV64)
++    static constexpr char arch[] = "riscv64";
+ #else
+ #error Port
+ #endif
+-- 
+2.40.1
+

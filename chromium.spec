@@ -78,7 +78,7 @@
 %endif
 
 # enable v4l2 and disable vaapi for aarch64 platform
-%ifarch aarch64
+%ifarch aarch64 riscv64
 %if 0%{?fedora} >= 36
 %global use_vaapi 0
 %global use_v4l2_codec 1
@@ -242,7 +242,7 @@
 
 Name:	chromium%{chromium_channel}
 Version: 113.0.5672.63
-Release: 1%{?dist}
+Release: 1.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
 License: BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
@@ -370,6 +370,9 @@ Patch301: chromium-112-workaround-llvm14-c++20-epel8.patch
 Patch302: chromium-113-workaround_clang_bug-structured_binding.patch
 # declare iterators as subtypes
 Patch303: chromium-113-typename.patch
+
+# RISC-V 64 support patch from Arch Linux
+Patch1000:  0001-riscv64-support-patch-from-Arch-Linux.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -679,9 +682,9 @@ Requires: chromium-common%{_isa} = %{version}-%{release}
 ExclusiveArch: x86_64
 %else
 %if 0%{?fedora} > 32
-ExclusiveArch: x86_64 aarch64
+ExclusiveArch: x86_64 aarch64 riscv64
 %else
-ExclusiveArch: x86_64 aarch64
+ExclusiveArch: x86_64 aarch64 riscv64
 %endif
 %endif
 
@@ -969,6 +972,10 @@ udev.
 %endif
 
 %patch -P303 -p1 -b .typename
+
+%ifarch riscv64
+%patch -P1000 -p1 -b .riscv64
+%endif
 
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
@@ -1644,6 +1651,10 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/chromedriver
 
 %changelog
+* Sun May 07 2023 Liu Yang <Yang.Liu.sn@gmail.com> - 113.0.5672.63-1.rv64
+- Add riscv64 support patch from Arch Linux
+- https://github.com/felixonmars/archriscv-packages/tree/master/chromium
+
 * Wed May 03 2023 Than Ngo <than@redhat.com> - 113.0.5672.63-1
 - update to 113.0.5672.63
 
