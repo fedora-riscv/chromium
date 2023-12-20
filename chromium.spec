@@ -236,7 +236,7 @@
 
 Name:	chromium%{chromium_channel}
 Version: 116.0.5845.96
-Release: 1%{?dist}
+Release: 1.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
 License: BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
@@ -381,6 +381,14 @@ Patch351: chromium-116-tweak_about_gpu.patch
 # Guard the field assignment num_delta_pocs_of_ref_rps_idx as it is not supported
 # in fedora < 39
 Patch352: chromium-116-v4l2-num_delta_pocs_of_ref_rps_idx.patch
+
+# RISC-V 64 support patch from Arch Linux
+Patch1000: swiftshader-use-llvm16.patch
+Patch1001: riscv-angle.patch
+Patch1002: riscv-dav1d.patch
+Patch1003: riscv-libgav1.patch
+Patch1004: riscv-sandbox.patch
+Patch1005: riscv-crashpad.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -686,9 +694,9 @@ Requires: chromium-common%{_isa} = %{version}-%{release}
 ExclusiveArch: x86_64
 %else
 %if 0%{?fedora} > 32
-ExclusiveArch: x86_64 aarch64
+ExclusiveArch: x86_64 aarch64 riscv64
 %else
-ExclusiveArch: x86_64 aarch64
+ExclusiveArch: x86_64 aarch64 riscv64
 %endif
 %endif
 
@@ -987,6 +995,16 @@ udev.
 %endif 
 %endif
 
+%ifarch riscv64
+%patch -P1000 -p1 -b .llvm16
+%patch -P1001 -p1 -b .riscv-angle
+%patch -P1002 -p1 -b .riscv-dav1d
+%patch -P1003 -p1 -b .riscv-libgav1
+%patch -P1004 -p1 -b .riscv-sandbox
+pushd third_party/crashpad/crashpad
+%patch -P1005 -p1 -b .riscv-crashpad
+popd
+%endif
 
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
@@ -1124,7 +1142,7 @@ CHROMIUM_CORE_GN_DEFINES+=' google_default_client_secret="%{default_client_secre
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=true'
 CHROMIUM_CORE_GN_DEFINES+=' clang_base_path="%{_prefix}"'
 CHROMIUM_CORE_GN_DEFINES+=' clang_use_chrome_plugins=false'
-CHROMIUM_CORE_GN_DEFINES+=' use_lld=true'
+CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
 %else
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=false'
 CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
@@ -1547,6 +1565,8 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/resources.pak
 %{chromium_path}/%{chromium_browser_channel}
 %{chromium_path}/%{chromium_browser_channel}.sh
+%{chromium_path}/libEGL.so
+%{chromium_path}/libGLESv2.so
 %attr(4755, root, root) %{chromium_path}/chrome-sandbox
 %if %{use_qt}
 %{chromium_path}/libqt5_shim.so
@@ -1668,6 +1688,10 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/chromedriver
 
 %changelog
+* Fri Aug 18 2023 Songsong Zhang <U2FsdGVkX1@gmail.com> - 116.0.5845.96-1.rv64
+- Add riscv64 support
+- https://github.com/felixonmars/archriscv-packages/tree/master/chromium
+
 * Tue Aug 15 2023 Than Ngo <than@redhat.com> - 116.0.5845.96-1
 -  update to 116.0.5845.96 
 
