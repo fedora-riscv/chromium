@@ -1,8 +1,5 @@
 %define _lto_cflags %{nil}
 
-# set default fuzz=2 for patch
-%global _default_patch_fuzz 2
-
 # enable|disable system build flags
 %global system_build_flags 0
 
@@ -13,8 +10,7 @@
 %global numjobs %{_smp_build_ncpus}
 %endif
 
-# This flag is so I can build things very fast on a giant system.
-# Enabling this in koji causes aarch64 builds to timeout indefinitely.
+# enable|disable all cpus for the build.
 %global use_all_cpus 1
 
 %if %{use_all_cpus}
@@ -26,6 +22,10 @@
 
 # enable|disble bootstrap
 %global bootstrap 0
+# workaround for broken gn on epel 8/9
+%if 0%{?rhel} == 8 || 0%{?rhel} == 9
+%global bootstrap 1
+%endif
 
 # Fancy build status, so we at least know, where we are..
 # %1 where
@@ -41,12 +41,24 @@
 %global build_remoting 0
 
 # set nodejs_version
-%global nodejs_version v19.8.1
+%global nodejs_version v20.6.1
 
-# set version for devtoolset and gcc-toolset
+%global system_nodejs 1
+# RHEL 8 needs newer nodejs
+%if 0%{?rhel} == 8
+%global system_nodejs 0
+%endif
+
+# set esbuild_version
+%global esbuild_version 0.19.2
+
+# set latest version for devtoolset and gcc-toolset
 %global dts_version 12
+%if 0%{?rhel} == 8 || 0%{?rhel} == 9
+%global dts_version 13
+%endif
 
-# set version for llvm-toolset on el7
+# set latest version for llvm-toolset on el7
 %global llvm_toolset_version 14.0
 
 # set name for toolset
@@ -62,11 +74,13 @@
 %global chromium_pybin %{__python3}
 %endif
 
-# We'd like to always have this on...
+# va-api only supported in rhel >= 9 and fedora
 %global use_vaapi 1
+
+# v4l2_codec only enable for fedora aarch64
 %global use_v4l2_codec 0
 
-# ... but the libva in EL7 (and EL8) is too old.
+# libva in EL7 and EL8 is too old.
 %if 0%{?rhel} == 7 || 0%{?rhel} == 8
 %global use_vaapi 0
 %endif
@@ -76,6 +90,16 @@
 %if 0%{?fedora} >= 36
 %global use_vaapi 0
 %global use_v4l2_codec 1
+%endif
+%endif
+
+# Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=2239523
+# Disable BTI until this is fixed upstream.
+%global disable_bti 0
+%ifarch aarch64
+%if 0%{?fedora}
+%global optflags %(echo %{optflags} | sed 's/-mbranch-protection=standard /-mbranch-protection=pac-ret /')
+%global disable_bti 1
 %endif
 %endif
 
@@ -96,9 +120,22 @@
 %global headlessbuilddir out/Headless
 %global remotingbuilddir out/Remoting
 
-# Debuginfo packages aren't very useful here. If you need to debug
-# you should do a proper debug build (not implemented in this spec yet)
+# enable|disable debuginfo
+%global enable_debug 1
+# disable debuginfo due to a bug in debugedit on el7
+# error: canonicalization unexpectedly shrank by one character
+# https://bugzilla.redhat.com/show_bug.cgi?id=304121
+%if 0%{?rhel} == 7
+%global enable_debug 0
+%endif
+%if ! %{enable_debug}
 %global debug_package %{nil}
+%global debug_level 0
+%else
+%global debug_level 1
+# workaround for the error empty file debugsource
+%undefine _debugsource_packages
+%endif
 
 # %%{nil} for Stable; -beta for Beta; -dev for Devel
 # dash in -beta and -dev is intentional !
@@ -119,8 +156,19 @@
 %global __provides_exclude_from ^(%{chromium_path}/.*\\.so|%{chromium_path}/.*\\.so.*)$
 %global __requires_exclude ^(%{chromium_path}/.*\\.so|%{chromium_path}/.*\\.so.*)$
 
+# enable|disable use_custom_libcxx
+%global use_custom_libcxx 1
+
 # enable clang by default
 %global clang 1
+
+# enable|disable control flow integrity support
+%global cfi 0
+%if %{clang}
+%if 0%{?fedora} || 0%{?rhel} > 7
+%global cfi 1
+%endif
+%endif
 
 # set correct toolchain
 %if %{clang}
@@ -129,14 +177,28 @@
 %global toolchain gcc
 %endif
 
-# enable|disable system brotli
-# disable system brotli due to old system brotli
-%global bundlebrotli 1
+# enable qt backend for el >= 8 and fedora
+%if 0%{?rhel} >= 8 || 0%{?fedora}
+%global use_qt 1
+%else
+%global use_qt 0
+%endif
+
+%if 0%{?rhel} > 9 || 0%{?fedora}
+%global use_qt6 1
+%else
+%global use_qt6 0
+%endif
+
+# enable gtk3 by default
+%global gtk3 1
 
 # Chromium's fork of ICU is now something we can't unbundle.
 # This is left here to ease the change if that ever switches.
 %global bundleicu 1
 
+# system libre2.so is not supported with use_custom_libcxx=true
+# because the library's interface relies on libstdc++'s std::string and std::vector.
 %global bundlere2 1
 
 # The libxml_utils code depends on the specific bundled libxml checkout
@@ -144,26 +206,19 @@
 # 2017-06-08.
 %global bundlelibxml 1
 
+%global bundlelibaom 1
+
 # Fedora's Python 2 stack is being removed, we use the bundled Python libraries
 # This can be revisited once we upgrade to Python 3
 %global bundlepylibs 0
 
 # RHEL 7.9 dropped minizip.
-# It exists everywhere else though.
+# enable bundleminizip for Fedora > 39 due to switch to minizip-ng
+# which breaks the build
 %global bundleminizip 0
-%if 0%{?rhel} == 7
+%if 0%{?rhel} == 7 || 0%{?fedora} > 39
 %global bundleminizip 1
 %endif
-
-# enable qt backend for el >= 8 and fedora >= 35
-%if 0%{?rhel} >= 8 || 0%{?fedora} >=35
-%global use_qt 1
-%else
-%global use_qt 0
-%endif
-
-# enable gtk3 by default
-%global gtk3 1
 
 %if 0%{?rhel} == 7 || 0%{?rhel} == 8
 %global bundleopus 1
@@ -176,13 +231,18 @@
 %global bundlelibdrm 1
 %global bundlefontconfig 1
 %global bundleffmpegfree 1
-%global bundlelibaom 1
+%global bundlebrotli 1
 %else
-# Chromium really wants to use its bundled harfbuzz. Sigh.
 %if 0%{?fedora} > 37
 %global bundleharfbuzz 0
 %else
 %global bundleharfbuzz 1
+%endif
+# disable system brotli due to old system brotli on el and fedora < 38
+%if 0%{?fedora} > 38
+%global bundlebrotli 0
+%else
+%global bundlebrotli 1
 %endif
 %global bundleopus 0
 %global bundlelibusbx 0
@@ -192,13 +252,7 @@
 %global bundlelibdrm 0
 %global bundlefontconfig 0
 %global bundleffmpegfree 0
-%global bundlelibaom 1
-# system freetype on fedora > 36
-%if 0%{?fedora} > 36
 %global bundlefreetype 0
-%else
-%global bundlefreetype 1
-%endif
 %endif
 
 ### From 2013 until early 2021, Google permitted distribution builds of
@@ -235,7 +289,7 @@
 %endif
 
 Name:	chromium%{chromium_channel}
-Version: 116.0.5845.96
+Version: 120.0.6099.109
 Release: 1.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
@@ -247,17 +301,17 @@ Patch0: chromium-70.0.3538.67-sandbox-pie.patch
 # Use /etc/chromium for initial_prefs
 Patch1: chromium-115-initial_prefs-etc-path.patch
 
-# Use gn system files
-Patch2: chromium-107.0.5304.110-gn-system.patch
+# system libusb
+Patch2: chromium-120-system-libusb.patch
 
 # Do not mangle zlib
 Patch5: chromium-77.0.3865.75-no-zlib-mangle.patch
 
 # Do not use unrar code, it is non-free
-Patch6: chromium-115-norar.patch
+Patch6: chromium-119-norar.patch
 
 # Try to load widevine from other places
-Patch8: chromium-108-widevine-other-locations.patch
+Patch8: chromium-117-widevine-other-locations.patch
 
 # Tell bootstrap.py to always use the version of Python we specify
 Patch11: chromium-93.0.4577.63-py3-bootstrap.patch
@@ -272,7 +326,7 @@ Patch20: chromium-disable-font-tests.patch
 Patch52: chromium-81.0.4044.92-unbundle-zlib.patch
 
 # Fix headers to look for system paths when we are using system minizip
-Patch61: chromium-109-system-minizip-header-fix.patch
+Patch61: chromium-119-system-minizip-header-fix.patch
 
 # Fix issue where closure_compiler thinks java is only allowed in android builds
 # https://bugs.chromium.org/p/chromium/issues/detail?id=1192875
@@ -292,7 +346,8 @@ Patch89: chromium-116-system-brotli.patch
 
 # disable GlobalMediaControlsCastStartStop to avoid crash
 # when using the address bar media player button
-Patch90: chromium-113-disable-GlobalMediaControlsCastStartStop.patch
+# it works with use_custom_libcxx=true
+Patch90: chromium-120-disable-GlobalMediaControlsCastStartStop.patch
 
 # patch for using system opus
 Patch91: chromium-108-system-opus.patch
@@ -312,7 +367,7 @@ Patch104: chromium-99.0.4844.51-epel7-old-cups.patch
 
 # libdrm on EL7 is rather old and chromium assumes newer
 # This gets us by for now
-Patch105: chromium-85.0.4183.83-el7-old-libdrm.patch
+Patch105: chromium-120-el7-old-libdrm.patch
 
 # error: no matching function for call to 'std::basic_string<char>::erase(std::basic_string<char>::const_iterator, __gnu_cxx::__normal_iterator<const char*, std::basic_string<char> >&)'
 #   33 |   property_name.erase(property_name.cbegin(), cur);
@@ -320,67 +375,82 @@ Patch105: chromium-85.0.4183.83-el7-old-libdrm.patch
 Patch106: chromium-98.0.4758.80-epel7-erase-fix.patch
 
 # Add additional operator== to make el7 happy.
-Patch107: chromium-99.0.4844.51-el7-extra-operator.patch
+Patch107: chromium-120-el7-extra-operator.patch
+# old v4l2 on el7
+Patch108: chromium-118-el7_v4l2_quantization.patch 
 # workaround for clang bug on el7
 Patch109: chromium-114-wireless-el7.patch
 Patch110: chromium-115-buildflag-el7.patch
 Patch111: chromium-116-constexpr.patch
+Patch112: chromium-117-el7-default_constructor.patch
+# old clang on el7
+
+Patch113: chromium-120-el7-clang-version-warning.patch
+Patch114: chromium-120-el7-clang-build-failure.patch
 
 # system ffmpeg
-Patch114: chromium-107-ffmpeg-duration.patch
-Patch115: chromium-107-proprietary-codecs.patch
-# drop av_stream_get_first_dts from internal ffmpeg
-Patch116: chromium-112-ffmpeg-first_dts.patch
-# revert new-channel-layout-api on f36, old ffmpeg-free
-Patch117: chromium-108-ffmpeg-revert-new-channel-layout-api.patch
+# need for old ffmpeg 5.x on epel9 and fedora 37
+Patch115: chromium-107-ffmpeg-5.x-duration.patch
+# disable the check
+Patch116: chromium-107-proprietary-codecs.patch
+# fix tab crash with SIGTRAP error when using system ffmpeg
+Patch117: chromium-118-sigtrap_system_ffmpeg.patch
 
-# revert AV1 VA-API video encode due to old libva on el9
-Patch130: chromium-114-revert-av1enc-el9.patch
+# revert AV1 VAAPI video encode due to old libva on el9
+Patch130: chromium-119-revert-av1enc-el9.patch
 
-# compiler build errors
-Patch300: chromium-116-no_matching_constructor.patch
+# file conflict with old kernel on el8/el9
+Patch140: chromium-118-dma_buf_export_sync_file-conflict.patch
+
+# fixes for old clang version in fedora < 38 end epel < 8 (old clang <= 15)
+# compiler build errors, no matching constructor for initialization
+Patch300: chromium-120-no_matching_constructor.patch
 Patch301: chromium-115-compiler-SkColor4f.patch
 
 # workaround for clang bug, https://github.com/llvm/llvm-project/issues/57826
-Patch302: chromium-115-workaround_clang_bug-structured_binding.patch
+Patch302: chromium-120-workaround_clang_bug-structured_binding.patch
 
 # missing typename
-Patch303: chromium-116-typename.patch
+Patch303: chromium-120-typename.patch
+
+# error: invalid operands to binary expression
+Patch304: chromium-117-string-convert.patch
+
+Patch306: chromium-119-assert.patch
+
+# disable memory tagging in epel7 and epel8 on aarch64 due to new feature IFUNC-Resolver
+# not supported in old glibc < 2.30, error: fatal error: 'sys/ifunc.h' file not found
+Patch307: chromium-120-arm64-memory_tagging.patch
 
 # missing include header files
-Patch304: chromium-116-missing-header-files.patch
-
-# compiler error with c++20
-Patch306: chromium-116-emplace_back_on_vector-c++20.patch
-
-# disable memory tagging for epel8 on aarch64 due to new feature IFUNC-Resolver not supported
-# in old glibc < 2.30
-# error: fatal error: 'sys/ifunc.h' file not found
-Patch307: chromium-116-arm64-memory_tagging.patch
-
-# upstream, do not restrict new V4L2 decoders to ARM or ChromeOS 
-# error: use of undeclared identifier 'kV4L2FlatStatefulVideoDecoder'
-# error: use of undeclared identifier 'kV4L2FlatStatelessVideoDecoder'
-Patch308: chromium-115-do_not_restrict_new_V4L2_decoders.v4l2.pach
-
-# upstream, include contains.h header for V4L2StatefulVideoDecoder
-# error: no member named 'Contains' in namespace 'base'
-Patch309: chromium-115-include_contains_h_header_for_V4L2StatefulVideoDecoder.patch
+Patch310: chromium-120-missing-header-files.patch
 
 # clang warnings
 Patch311: chromium-115-clang-warnings.patch
 
-# imp module is removed in python-3.12
-Patch312: chromium-115-python-3.12-deprecated.patch
+# enable fstack-protector-strong
+Patch312: chromium-119-fstack-protector-strong.patch
+
+# build error
+Patch351: chromium-117-mnemonic-error.patch
+
+# Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=2239523
+# https://bugs.chromium.org/p/chromium/issues/detail?id=1145581#c60
+# Disable BTI until this is fixed upstream.
+Patch352: chromium-117-workaround_for_crash_on_BTI_capable_system.patch
+
+# gn workaround for the error: Assignment had no effect
+Patch353: chromium-120-gn-workaround-atspi.patch
+# remove flag split-threshold-for-reg-with-hint, it' not supported in clang <= 17
+Patch354: chromium-120-split-threshold-for-reg-with-hint.patch
+# error: unknown type name 'nullptr_t'
+Patch355: chromium-120-nullptr_t-without-namespace-std.patch
+# disable FFmpegAllowLists by default to allow external ffmpeg
+patch356: chromium-120-disable-FFmpegAllowLists.patch
+# remove ldflags -Wl,-mllvm,-disable-auto-upgrade-debug-info which is not supported
+Patch357: chromium-120-clang16-disable-auto-upgrade-debug-info.patch
 
 # upstream patches
-# Set toolkit dark preference based on FDO dark preference
-Patch350: chromium-115-linux_ui_darkmode.patch
-# Tweak about:gpu, Add dark mode support
-Patch351: chromium-116-tweak_about_gpu.patch
-# Guard the field assignment num_delta_pocs_of_ref_rps_idx as it is not supported
-# in fedora < 39
-Patch352: chromium-116-v4l2-num_delta_pocs_of_ref_rps_idx.patch
 
 # RISC-V 64 support patch from Arch Linux
 Patch1000: swiftshader-use-llvm16.patch
@@ -388,7 +458,7 @@ Patch1001: riscv-angle.patch
 Patch1002: riscv-dav1d.patch
 Patch1003: riscv-libgav1.patch
 Patch1004: riscv-sandbox.patch
-Patch1005: riscv-crashpad.patch
+Patch1005: riscv-base.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -409,13 +479,23 @@ Source7: get_free_ffmpeg_source_files.py
 Source8: get_linux_tests_names.py
 # GNOME stuff
 Source9: chromium-browser.xml
-Source11: chrome-remote-desktop@.service
-Source13: master_preferences
+Source10: chrome-remote-desktop@.service
+Source11: master_preferences
 
-# RHEL 8 needs newer nodejs
-%if 0%{?rhel} == 8
-Source19: https://nodejs.org/dist/latest-v16.x/node-%{nodejs_version}-linux-x64.tar.xz
-Source21: https://nodejs.org/dist/latest-v16.x/node-%{nodejs_version}-linux-arm64.tar.xz
+%if ! %{system_nodejs}
+Source12: https://nodejs.org/dist/%{nodejs_version}/node-%{nodejs_version}-linux-x64.tar.xz
+Source13: https://nodejs.org/dist/%{nodejs_version}/node-%{nodejs_version}-linux-arm64.tar.xz
+%endif
+
+# esbuild binary
+%if 0%{?rhel}
+Source14: https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-%{esbuild_version}.tgz
+Source15: https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-%{esbuild_version}.tgz
+%endif
+
+# esbuild binary from fedora
+%if 0%{?fedora}
+BuildRequires: golang-github-evanw-esbuild
 %endif
 
 %if %{clang}
@@ -433,7 +513,7 @@ BuildRequires: %{toolset}-%{dts_version}-libatomic-devel
 %endif
 %else
 %if 0%{?rhel} == 7 || 0%{?rhel} == 8
-BuildRequires: %{toolset}-%{dts_version}-toolchain, %{toolset}-%{dts_version}-libatomic-devel
+BuildRequires: %{toolset}-%{dts_version}-binutils, %{toolset}-%{dts_version}-libatomic-devel
 %endif
 %if 0%{?fedora} || 0%{?rhel} > 8
 BuildRequires: gcc-c++
@@ -448,6 +528,15 @@ BuildRequires: pkgconfig(libavcodec)
 BuildRequires: pkgconfig(libavfilter)
 BuildRequires: pkgconfig(libavformat)
 BuildRequires: pkgconfig(libavutil)
+# chromium fail to start for rpmfusion users due to ABI break in ffmpeg-free-6.0.1
+# bethween fedora and rpmfussion.
+%if 0%{?rhel} == 9 || 0%{?fedora} == 37
+Conflicts: libavformat-free%{_isa} < 5.1.4
+Conflicts: ffmpeg-libs%{_isa} < 5.1.4
+%else
+Conflicts: libavformat-free%{_isa} < 6.0.1
+Conflicts: ffmpeg-libs%{_isa} < 6.0.1-2
+%endif
 %endif
 
 # build with system libaom
@@ -471,6 +560,15 @@ BuildRequires:	gperf
 %if %{use_qt}
 BuildRequires: pkgconfig(Qt5Core)
 BuildRequires: pkgconfig(Qt5Widgets)
+%endif
+
+%if %{use_qt6}
+BuildRequires: pkgconfig(Qt6Core)
+BuildRequires: pkgconfig(Qt6Widgets)
+%endif
+
+%if %{cfi}
+BuildRequires: compiler-rt
 %endif
 
 %if ! %{bundleharfbuzz}
@@ -503,19 +601,17 @@ BuildRequires:	mesa-libgbm-devel
 
 # Old Fedora (before 30) uses the 1.2 minizip by default.
 # Newer Fedora needs to use the compat package
-%if 0%{?fedora} >= 30
-BuildRequires:	minizip-compat-devel
+# Fedora > 39 uses minizip-ng
+%if ! %{bundleminizip}
+%if 0%{?fedora} > 39 || 0%{?rhel} > 9
+# BuildRequires: minizip-ng-devel
+BuildRequires: minizip-compat-devel
 %else
-# RHEL 8 needs to use the compat-minizip (provided by minizip1.2)
-%if 0%{?rhel} >= 8
-BuildRequires:	minizip-compat-devel
+BuildRequires: minizip-compat-devel
 %endif
 %endif
 
-# RHEL 8 needs newer nodejs
-%if 0%{?rhel} == 8
-# nothing
-%else
+%if %{system_nodejs}
 BuildRequires: nodejs
 %endif
 
@@ -648,12 +744,6 @@ BuildRequires: speech-dispatcher-devel
 BuildRequires: yasm
 BuildRequires: zlib-devel
 
-# Technically, this logic probably applies to older rhel too... but whatever.
-# RHEL 8 and 9 do not have gnome-keyring. Not sure why, but whatever again.
-%if 0%{?fedora} || 0%{?rhel} == 7
-BuildRequires:	pkgconfig(gnome-keyring-1)
-%endif
-
 # remote desktop needs this
 BuildRequires:	pam-devel
 BuildRequires:	systemd
@@ -686,18 +776,12 @@ Requires: u2f-hidraw-policy
 
 Requires: chromium-common%{_isa} = %{version}-%{release}
 
-# rhel 7: ia32 x86_64
-# rhel 8+: ia32, x86_64, aarch64
-# fedora 32 or older: ia32, x86_64, aarch64
-# fedora 33+: x86_64 aarch64 only
+# rhel 7: x86_64
+# rhel 8+ and fedora 37+: x86_64 aarch64
 %if 0%{?rhel} == 7
 ExclusiveArch: x86_64
 %else
-%if 0%{?fedora} > 32
 ExclusiveArch: x86_64 aarch64 riscv64
-%else
-ExclusiveArch: x86_64 aarch64 riscv64
-%endif
 %endif
 
 # Bundled bits (I'm sure I've missed some)
@@ -720,7 +804,7 @@ Provides: bundled(fdmlibm) = 5.3
 
 # Don't get too excited. MPEG and other legally problematic stuff is stripped out.
 %if %{bundleffmpegfree}
-Provides: bundled(ffmpeg) = 5.1.2
+Provides: bundled(ffmpeg) = 6.0
 %endif
 
 %if %{bundlelibaom}
@@ -833,21 +917,7 @@ Chromium is an open-source web browser, powered by WebKit (Blink).
 
 %package common
 Summary: Files needed for both the headless_shell and full Chromium
-# Chromium needs an explicit Requires: minizip-compat
-# We put it here to cover headless too.
-%if 0%{?fedora} >= 30
-Requires: minizip-compat%{_isa}
-%else
-%if 0%{?rhel} == 7
-# Do nothing
-%else
-%if 0%{?rhel} == 9
-Requires: minizip1.2%{_isa}
-%else
-Requires: minizip%{_isa}
-%endif
-%endif
-%endif
+
 # -common doesn't have chrome-remote-desktop bits
 # but we need to clean it up if it gets disabled again
 # NOTE: Check obsoletes version to be sure it matches
@@ -900,7 +970,7 @@ udev.
 ### Chromium Fedora Patches ###
 %patch -P0 -p1 -b .sandboxpie
 %patch -P1 -p1 -b .etc
-%patch -P2 -p1 -b .gnsystem
+%patch -P2 -p1 -b .system-libusb
 %patch -P5 -p1 -b .nozlibmangle
 %patch -P6 -p1 -b .nounrar
 %patch -P8 -p1 -b .widevine-other-locations
@@ -908,11 +978,8 @@ udev.
 
 %patch -P20 -p1 -b .disable-font-test
 
-%if 0%{?fedora} || 0%{?rhel} >= 8
-%patch -P52 -p1 -b .unbundle-zlib
-%endif
-
 %if ! %{bundleminizip}
+%patch -P52 -p1 -b .unbundle-zlib
 %patch -P61 -p1 -b .system-minizip
 %endif
 
@@ -925,7 +992,9 @@ udev.
 %patch -P89 -p1 -b .system-brotli
 %endif
 
+%if ! %{use_custom_libcxx}
 %patch -P90 -p1 -b .disable-GlobalMediaControlsCastStartStop
+%endif
 
 %if ! %{bundleopus}
 %patch -P91 -p1 -b .system-opus
@@ -937,12 +1006,11 @@ udev.
 %endif
 
 %if ! %{bundleffmpegfree}
-%patch -P114 -p1 -b .system-ffmppeg
-%patch -P115 -p1 -b .prop-codecs
-%patch -P116 -p1 -b .first_dts
-%if 0%{?fedora} == 36
-%patch -P117 -p1 -b .revert-new-channel-layout-api
+%if 0%{?rhel} == 9 || 0%{?fedora} == 37
+%patch -P115 -p1 -b .ffmpeg-5.x-duration
 %endif
+%patch -P116 -p1 -b .prop-codecs
+%patch -P117 -p1 -b .sigtrap_system_ffmpeg
 %endif
 
 # EPEL specific patches
@@ -954,26 +1022,33 @@ udev.
 %patch -P105 -p1 -b .el7-old-libdrm
 %patch -P106 -p1 -b .el7-erase-fix
 %patch -P107 -p1 -b .el7-extra-operator-equalequal
+%patch -P108 -p1 -b .el7_v4l2_quantization
 %patch -P109 -p1 -b .wireless
 %patch -P110 -p1 -b .buildflag-el7
 %patch -P111 -p1 -b .constexpr
+%patch -P112 -p1 -b .default_constructor
+%patch -P113 -p1 -b .el7-clang-version-warning
+%patch -P114 -p1 -R -b .clang-build-failure
+%endif
+
+%if 0%{?rhel} == 8 || 0%{?rhel} == 9
+%patch -P140 -p1 -b .dma_buf_export_sync_file-conflict
 %endif
 
 %if 0%{?rhel} == 9
 %patch -P130 -p1 -b .revert-av1enc
 %endif
 
-%patch -P300 -p1 -b .no_matching_constructor
 %if %{clang}
-%if 0%{?rhel} || 0%{?fedora} < 38
+%if 0%{?rhel} < 8 || 0%{?fedora} < 38
+%patch -P300 -p1 -b .no_matching_constructor
 %patch -P301 -p1 -b .workaround_clang-SkColor4f
 %patch -P302 -p1 -b .workaround_clang_bug-structured_binding
-%endif
-%endif
-
 %patch -P303 -p1 -b .typename
-%patch -P304 -p1 -b .missing-header-files
-%patch -P306 -p1 -b .emplace_back_on_vector-c++20
+%patch -P304 -p1 -b .string-convert
+%patch -P306 -p1 -b .assert
+%endif
+%endif
 
 %ifarch aarch64
 %if 0%{?rhel} <= 8
@@ -981,19 +1056,23 @@ udev.
 %endif
 %endif
 
-%patch -P308 -p1 -b .do_not_restrict_new_V4L2_decoders.v4l2
-%patch -P309 -p1 -b .include_contains_h_header_for_V4L2StatefulVideoDecoder
+%patch -P310 -p1 -b .missing-header-files
 %patch -P311 -p1 -b .clang-warnings
-%patch -P312 -p1 -b .python-3.12-deprecated
+%patch -P312 -p1 -b .fstack-protector-strong
 
-%patch -P350 -p1 -b .linux_ui_darkmode
-%patch -P351 -p1 -b .tweak_about_gpu
+%patch -P351 -p1 -b .mnemonic-error
 
-%ifarch aarch64
-%if 0%{?fedora} < 39
-%patch -P352 -p1 -b .num_delta_pocs_of_ref_rps_idx
-%endif 
+%if %{disable_bti}
+%patch -P352 -p1 -b .workaround_for_crash_on_BTI_capable_system
 %endif
+
+%patch -P353 -p1 -b .gn-workaround-atspi
+%patch -P354 -p1 -b .revert-split-threshold-for-reg-with-hint
+%if ! %{use_custom_libcxx}
+%patch -P355 -p1 -b .nullptr_t-without-namespace-std
+%endif
+%patch -P356 -p1 -b .disable-FFmpegAllowLists
+%patch -P357 -p1 -b .clang16-disable-auto-upgrade-debug-info
 
 %ifarch riscv64
 %patch -P1000 -p1 -b .llvm16
@@ -1001,24 +1080,22 @@ udev.
 %patch -P1002 -p1 -b .riscv-dav1d
 %patch -P1003 -p1 -b .riscv-libgav1
 %patch -P1004 -p1 -b .riscv-sandbox
-pushd third_party/crashpad/crashpad
-%patch -P1005 -p1 -b .riscv-crashpad
-popd
+%patch -P1005 -p1 -b .riscv-base
 %endif
 
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
 find -type f \( -iname "*.py" \) -exec sed -i '1s=^#! */usr/bin/\(python\|env python\)[23]\?=#!%{__python3}=' {} +
 
-
-%if 0%{?rhel} == 8
+# Add correct path for nodejs binary
+%if ! %{system_nodejs}
   pushd third_party/node/linux
 %ifarch x86_64
-  tar xf %{SOURCE19}
+  tar xf %{SOURCE12}
   mv node-%{nodejs_version}-linux-x64 node-linux-x64
 %endif
 %ifarch aarch64
-  tar xf %{SOURCE21}
+  tar xf %{SOURCE13}
   mv node-%{nodejs_version}-linux-arm64 node-linux-arm64
   # This is weird, but whatever
   ln -s node-linux-arm64 node-linux-x64
@@ -1027,6 +1104,19 @@ popd
 %else
   mkdir -p third_party/node/linux/node-linux-x64/bin
   ln -s %{_bindir}/node third_party/node/linux/node-linux-x64/bin/node
+%endif
+
+# Get rid of the bundled esbuild
+%if 0%{?fedora}
+  ln -sf %{_bindir}/esbuild third_party/devtools-frontend/src/third_party/esbuild/esbuild
+%else
+  %ifarch x86_64
+    tar -zxf %{SOURCE14} --directory %{_tmppath}
+  %endif
+  %ifarch aarch64
+    tar -zxf %{SOURCE15} --directory %{_tmppath}
+  %endif
+  mv %{_tmppath}/package/bin/esbuild third_party/devtools-frontend/src/third_party/esbuild/esbuild
 %endif
 
 # Get rid of the pre-built eu-strip binary, it is x86_64 and of mysterious origin
@@ -1049,12 +1139,6 @@ sed -i 's/getenv("CHROME_VERSION_EXTRA")/"Fedora Project"/' chrome/common/channe
 
 # Fix hardcoded path in remoting code
 sed -i 's|/opt/google/chrome-remote-desktop|%{crd_path}|g' remoting/host/setup/daemon_controller_delegate_linux.cc
-
-# reduce debuginfos
-sed -i 's|-g2|-g0|g' build/config/compiler/BUILD.gn
-
-# change moc to moc-qt5 for fedora
-sed -i 's|moc|moc-qt5|g' ui/qt/moc_wrapper.py
 
 %build
 # utf8 issue on epel7, Internal parsing error 'ascii' codec can't
@@ -1125,8 +1209,18 @@ CHROMIUM_CORE_GN_DEFINES+=' enable_nacl=false'
 CHROMIUM_CORE_GN_DEFINES+=' system_libdir="%{_lib}"'
 
 %if %{official_build}
-CHROMIUM_CORE_GN_DEFINES+=' is_official_build=true use_thin_lto=false is_cfi=false chrome_pgo_phase=0 use_debug_fission=true'
+CHROMIUM_CORE_GN_DEFINES+=' is_official_build=true'
 sed -i 's|OFFICIAL_BUILD|GOOGLE_CHROME_BUILD|g' tools/generate_shim_headers/generate_shim_headers.py
+%endif
+
+%if 0%{?rhel} || 0%{?fedora} < 39
+CHROMIUM_CORE_GN_DEFINES+=' chrome_pgo_phase=0'
+%endif
+
+%if %{cfi}
+CHROMIUM_CORE_GN_DEFINES+=' is_cfi=true'
+%else
+CHROMIUM_CORE_GN_DEFINES+=' is_cfi=false'
 %endif
 
 %if %{useapikey}
@@ -1151,7 +1245,7 @@ CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
 # disable rust, it's only using for testing
 CHROMIUM_CORE_GN_DEFINES+=' enable_rust=false'
 
-CHROMIUM_CORE_GN_DEFINES+=' use_sysroot=false disable_fieldtrial_testing_config=true rtc_enable_symbol_export=true'
+CHROMIUM_CORE_GN_DEFINES+=' use_sysroot=false disable_fieldtrial_testing_config=true'
 
 %if %{use_gold}
 CHROMIUM_CORE_GN_DEFINES+=' use_gold=true'
@@ -1167,12 +1261,16 @@ CHROMIUM_CORE_GN_DEFINES+=' icu_use_data_file=true'
 CHROMIUM_CORE_GN_DEFINES+=' target_os="linux"'
 CHROMIUM_CORE_GN_DEFINES+=' current_os="linux"'
 CHROMIUM_CORE_GN_DEFINES+=' treat_warnings_as_errors=false'
+%if %{use_custom_libcxx}
+CHROMIUM_CORE_GN_DEFINES+=' use_custom_libcxx=true'
+%else
 CHROMIUM_CORE_GN_DEFINES+=' use_custom_libcxx=false'
+%endif
 CHROMIUM_CORE_GN_DEFINES+=' enable_iterator_debugging=false'
 CHROMIUM_CORE_GN_DEFINES+=' enable_vr=false'
 CHROMIUM_CORE_GN_DEFINES+=' build_dawn_tests=false enable_perfetto_unittests=false'
 CHROMIUM_CORE_GN_DEFINES+=' disable_fieldtrial_testing_config=true'
-CHROMIUM_CORE_GN_DEFINES+=' blink_symbol_level=0 symbol_level=0 v8_symbol_level=0'
+CHROMIUM_CORE_GN_DEFINES+=' symbol_level=%{debug_level}'
 CHROMIUM_CORE_GN_DEFINES+=' blink_enable_generated_code_formatting=false'
 CHROMIUM_CORE_GN_DEFINES+=' angle_has_histograms=false'
 export CHROMIUM_CORE_GN_DEFINES
@@ -1191,14 +1289,16 @@ CHROMIUM_BROWSER_GN_DEFINES+=' media_use_openh264=false'
 CHROMIUM_BROWSER_GN_DEFINES+=' rtc_use_h264=false'
 CHROMIUM_BROWSER_GN_DEFINES+=' use_kerberos=true'
 
-%if 0%{?rhel} == 8
-CHROMIUM_BROWSER_GN_DEFINES+=' use_gnome_keyring=false use_glib=true'
-%endif
-
 %if %{use_qt}
-CHROMIUM_BROWSER_GN_DEFINES+=' use_qt=true'
+CHROMIUM_BROWSER_GN_DEFINES+=' use_qt=true moc_qt5_path="%{_libdir}/qt5/bin/"'
 %else
 CHROMIUM_BROWSER_GN_DEFINES+=' use_qt=false'
+%endif
+
+%if %{use_qt6}
+CHROMIUM_BROWSER_GN_DEFINES+=' use_qt6=true moc_qt6_path="%{_libdir}/qt6/libexec/"'
+%else
+CHROMIUM_BROWSER_GN_DEFINES+=' use_qt6=false'
 %endif
 
 CHROMIUM_BROWSER_GN_DEFINES+=' use_gio=true use_pulseaudio=true'
@@ -1232,7 +1332,7 @@ CHROMIUM_HEADLESS_GN_DEFINES+=' v8_use_external_startup_data=false enable_print_
 CHROMIUM_HEADLESS_GN_DEFINES+=' use_alsa=false use_bluez=false use_cups=false use_dbus=false use_gio=false use_kerberos=false'
 CHROMIUM_HEADLESS_GN_DEFINES+=' use_libpci=false use_pulseaudio=false use_udev=false rtc_use_pipewire=false'
 CHROMIUM_HEADLESS_GN_DEFINES+=' v8_enable_lazy_source_positions=false use_glib=false use_gtk=false use_pangocairo=false'
-CHROMIUM_HEADLESS_GN_DEFINES+=' use_qt=false is_component_build=false enable_ffmpeg_video_decoders=false media_use_ffmpeg=false'
+CHROMIUM_HEADLESS_GN_DEFINES+=' use_qt=false use_qt6=false is_component_build=false enable_ffmpeg_video_decoders=false media_use_ffmpeg=false'
 CHROMIUM_HEADLESS_GN_DEFINES+=' media_use_libvpx=false proprietary_codecs=false'
 export CHROMIUM_HEADLESS_GN_DEFINES
 
@@ -1326,8 +1426,6 @@ mkdir -p %{builddir} && cp -a %{_bindir}/gn %{builddir}/
 %build_target %{builddir} policy_templates
 
 %if %{build_remoting}
-# remote client
-# ninja -C ../%{builddir} -vvv remoting_me2me_host remoting_start_host remoting_it2me_native_messaging_host remoting_me2me_native_messaging_host remoting_native_messaging_manifests remoting_resources
 %build_target %{remotingbuilddir} remoting_all
 %endif
 
@@ -1371,18 +1469,12 @@ pushd %{builddir}
 	cp -a locales/*.pak %{buildroot}%{chromium_path}/locales/
 	%ifarch x86_64 aarch64
 		cp -a libvk_swiftshader.so %{buildroot}%{chromium_path}
-		strip %{buildroot}%{chromium_path}/libvk_swiftshader.so
 		cp -a libvulkan.so.1 %{buildroot}%{chromium_path}
-		strip %{buildroot}%{chromium_path}/libvulkan.so.1
 		cp -a vk_swiftshader_icd.json %{buildroot}%{chromium_path}
 	%endif
 	cp -a chrome %{buildroot}%{chromium_path}/%{chromium_browser_channel}
-	# Explicitly strip chromium-browser (since we don't use debuginfo here anyway)
-	strip %{buildroot}%{chromium_path}/%{chromium_browser_channel}
 	cp -a chrome_sandbox %{buildroot}%{chromium_path}/chrome-sandbox
-	strip %{buildroot}%{chromium_path}/chrome-sandbox
 	cp -a chrome_crashpad_handler %{buildroot}%{chromium_path}/chrome_crashpad_handler
-	strip %{buildroot}%{chromium_path}/chrome_crashpad_handler
 	cp -a ../../chrome/app/resources/manpage.1.in %{buildroot}%{_mandir}/man1/%{chromium_browser_channel}.1
 	sed -i "s|@@PACKAGE@@|%{chromium_browser_channel}|g" %{buildroot}%{_mandir}/man1/%{chromium_browser_channel}.1
 	sed -i "s|@@MENUNAME@@|%{chromium_menu_name}|g" %{buildroot}%{_mandir}/man1/%{chromium_browser_channel}.1
@@ -1393,12 +1485,13 @@ pushd %{builddir}
 
 	# This is ANGLE, not to be confused with the similarly named files under swiftshader/
 	cp -a libEGL.so libGLESv2.so %{buildroot}%{chromium_path}
-	strip %{buildroot}%{chromium_path}/libEGL.so
-	strip %{buildroot}%{chromium_path}/libGLESv2.so
 
 	%if %{use_qt}
 		cp -a libqt5_shim.so %{buildroot}%{chromium_path}
-		strip %{buildroot}%{chromium_path}/libqt5_shim.so
+	%endif
+
+	%if %{use_qt6}
+		cp -a libqt6_shim.so %{buildroot}%{chromium_path}
 	%endif
 
 	%if %{build_clear_key_cdm}
@@ -1411,7 +1504,6 @@ pushd %{builddir}
 				cp -a libclearkeycdm.so %{buildroot}%{chromium_path}
 			%endif
 		%endif
-		strip %{buildroot}%{chromium_path}/libclearkeycdm.so
 	%endif
 
 	# chromedriver
@@ -1428,7 +1520,6 @@ popd
 	pushd %{remotingbuilddir}
 		# Hey, there is a library now.
 		cp -a libremoting_core.so %{buildroot}%{crd_path}/
-		strip %{buildroot}%{crd_path}/libremoting_core.so
 
 		# See remoting/host/installer/linux/Makefile for logic
 		mkdir -p %{buildroot}%{crd_path}/remoting_locales
@@ -1469,16 +1560,23 @@ popd
    cp -a remoting/host/installer/linux/is-remoting-session %{buildroot}%{crd_path}/
 
    mkdir -p %{buildroot}%{_unitdir}
-   cp -a %{SOURCE11} %{buildroot}%{_unitdir}/
+   cp -a %{SOURCE10} %{buildroot}%{_unitdir}/
    sed -i 's|@@CRD_PATH@@|%{crd_path}|g' %{buildroot}%{_unitdir}/chrome-remote-desktop@.service
 %endif
 
 %if %{build_headless}
 	pushd %{headlessbuilddir}
 		cp -a headless_lib_data.pak headless_lib_strings.pak headless_shell %{buildroot}%{chromium_path}
-		# Explicitly strip headless_shell binary
-		strip %{buildroot}%{chromium_path}/headless_shell
 	popd
+%endif
+
+# need to strip binaries explicitly when debug is disable
+%if ! %{enable_debug}
+pushd %{buildroot}%{chromium_path}/
+for f in *.so chrome_crashpad_handler chrome-sandbox chromium-browser headless_shell chromedriver ; do
+   [ -f $f ] && strip $f
+done
+popd
 %endif
 
 # Add directories for policy management
@@ -1500,7 +1598,7 @@ mkdir -p %{buildroot}%{_datadir}/icons/hicolor/24x24/apps
 cp -a chrome/app/theme/chromium/product_logo_24.png %{buildroot}%{_datadir}/icons/hicolor/24x24/apps/%{chromium_browser_channel}.png
 
 # Install the master_preferences file
-install -m 0644 %{SOURCE13} %{buildroot}%{_sysconfdir}/%{name}/
+install -m 0644 %{SOURCE11} %{buildroot}%{_sysconfdir}/%{name}/
 
 mkdir -p %{buildroot}%{_datadir}/applications/
 desktop-file-install --dir %{buildroot}%{_datadir}/applications %{SOURCE4}
@@ -1570,6 +1668,9 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %attr(4755, root, root) %{chromium_path}/chrome-sandbox
 %if %{use_qt}
 %{chromium_path}/libqt5_shim.so
+%endif
+%if %{use_qt6}
+%{chromium_path}/libqt6_shim.so
 %endif
 %{_mandir}/man1/%{chromium_browser_channel}.*
 %{_datadir}/icons/hicolor/*/apps/%{chromium_browser_channel}.png
@@ -1688,12 +1789,132 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/chromedriver
 
 %changelog
-* Fri Aug 18 2023 Songsong Zhang <U2FsdGVkX1@gmail.com> - 116.0.5845.96-1.rv64
+* Thu Dec 21 2023 Songsong Zhang <U2FsdGVkX1@gmail.com> - 120.0.6099.109-1.rv64
 - Add riscv64 support
 - https://github.com/felixonmars/archriscv-packages/tree/master/chromium
 
+* Wed Dec 13 2023 Than Ngo <than@redhat.com> - 120.0.6099.109-1
+- update to 120.0.6099.109
+   * High CVE-2023-6702: Type Confusion in V8
+   * High CVE-2023-6703: Use after free in Blink
+   * High CVE-2023-6704: Use after free in libavif
+   * High CVE-2023-6705: Use after free in WebRTC
+   * High CVE-2023-6706: Use after free in FedCM
+   * Medium CVE-2023-6707: Use after free in CSS
+
+* Fri Dec 08 2023 Than Ngo <than@redhat.com> - 120.0.6099.71-1
+- update to 120.0.6099.71
+
+* Wed Dec 06 2023 Than Ngo <than@redhat.com> - 120.0.6099.62-2
+- drop unsupported ldflag which caused build failure
+
+* Tue Dec 05 2023 Than Ngo <than@redhat.com> - 120.0.6099.62-1
+- update to 120.0.6099.62
+- fixed bz#2252874, built with control flow integrity (CFI) support
+
+* Sat Dec 02 2023 Than Ngo <than@redhat.com> - 120.0.6099.56-1
+- update to 120.0.6099.56 
+- enable qt6 UI backend
+
+* Sat Dec 02 2023 Than Ngo <than@redhat.com> - 119.0.6045.199-2
+- fixed bz#2242271, built with bundleminizip in fedora > 39
+- fixed bz#2251884, built with fstack-protector-strong for improved security
+
+* Wed Nov 29 2023 Than Ngo <than@redhat.com> - 119.0.6045.199-1
+- update to 119.0.6045.199
+
+* Sun Nov 19 2023 Than Ngo <than@redhat.com> - 119.0.6045.159-2
+- fix ffmpeg conflicts
+
+* Wed Nov 15 2023 Than Ngo <than@redhat.com> - 119.0.6045.159-1
+- update to 119.0.6045.159, upstream security release
+   High CVE-2023-5997, use after free in Garbage Collection
+   High CVE-2023-6112, use after free in Navigation
+- add Requires/Conflicts for ABI break in fmpeg-free 6.0.1
+- drop first_dts patch, reintroduce first_dts patch in ffmpeg-free-6.0.1
+- fixed python3 syntaxWarning: invalid escape sequenc
+- skip clang's patches for epel8 that now gets clang-16 update
+
+* Mon Nov 13 2023 Than Ngo <than@redhat.com> - 119.0.6045.123-2
+- fixed bz#2240127, Some h.264 mp4s do not play 
+
+* Wed Nov 08 2023 Than Ngo <than@redhat.com> - 119.0.6045.123-1
+- update to 119.0.6045.123, include following security fixes:
+  high CVE-2023-5996: Use after free in WebAudio
+
+* Tue Nov 07 2023 Than Ngo <than@redhat.com> - 119.0.6045.105-2
+- enable debuginfo
+
+* Wed Nov 01 2023 Than Ngo <than@redhat.com> - 119.0.6045.105-1
+- update to 119.0.6045.105
+
+* Fri Oct 27 2023 Than Ngo <than@redhat.com> - 119.0.6045.59-1
+- update 119.0.6045.59
+
+* Wed Oct 25 2023 Than Ngo <than@redhat.com> - 118.0.5993.117-1
+- update to 118.0.5993.117
+
+* Wed Oct 18 2023 Than Ngo <than@redhat.com> - 118.0.5993.88-1
+- update to 118.0.5993.88
+- cleanup the package dependencies
+
+* Mon Oct 16 2023 Than Ngo <than@redhat.com> - 118.0.5993.70-2
+- fix tab crash with SIGTRAP when using system ffmpeg
+
+* Wed Oct 11 2023 Than Ngo <than@redhat.com> - 118.0.5993.70-1
+- update to 118.0.5993.70
+    - CVE-2023-5218: Use after free in Site Isolation.
+    - CVE-2023-5487: Inappropriate implementation in Fullscreen.
+    - CVE-2023-5484: Inappropriate implementation in Navigation.
+    - CVE-2023-5475: Inappropriate implementation in DevTools.
+    - CVE-2023-5483: Inappropriate implementation in Intents.
+    - CVE-2023-5481: Inappropriate implementation in Downloads.
+    - CVE-2023-5476: Use after free in Blink History.
+    - CVE-2023-5474: Heap buffer overflow in PDF.
+    - CVE-2023-5479: Inappropriate implementation in Extensions API.
+    - CVE-2023-5485: Inappropriate implementation in Autofill.
+    - CVE-2023-5478: Inappropriate implementation in Autofill.
+    - CVE-2023-5477: Inappropriate implementation in Installer.
+    - CVE-2023-5486: Inappropriate implementation in Input.
+    - CVE-2023-5473: Use after free in Cast.
+
+* Sat Oct 07 2023 Than Ngo <than@redhat.com> - 118.0.5993.54-1
+- update to 118.0.5993.54
+- drop use_gnome_keyring as it's removed by upstream
+
+* Thu Oct 05 2023 Than Ngo <than@redhat.com> - 117.0.5938.149-1
+- update to 117.0.5938.149
+- fix CVE-2023-5346: Type Confusion in V8
+
+* Fri Sep 29 2023 Than Ngo <than@redhat.com> - 117.0.5938.132-2
+- add workaround for the crash on BTI capable system 
+
+* Thu Sep 28 2023 Than Ngo <than@redhat.com> - 117.0.5938.132-1
+- update to 117.0.5938.132
+- CVE-2023-5217, heap buffer overflow in vp8 encoding in libvpx.
+- CVE-2023-5186, use after free in Passwords.
+- CVE-2023-5187, use after free in Extensions.
+￼	
+* Sat Sep 23 2023 Than Ngo <than@redhat.com> - 117.0.5938.92-2
+- backport upstream patch to fix memory leak
+
+* Fri Sep 22 2023 Than Ngo <than@redhat.com> - 117.0.5938.92-1
+- update to 117.0.5938.92
+
+* Sun Sep 17 2023 Than Ngo <than@redhat.com> - 117.0.5938.88-1
+- update to 117.0.5938.88
+
+* Wed Sep 13 2023 Than Ngo <than@redhat.com> - 117.0.5938.62-1
+- update to 117.0.5938.62
+
+* Tue Sep 12 2023 Than Ngo <than@redhat.com> - 116.0.5845.187-1
+- update to 116.0.5845.187
+
+* Fri Sep 08 2023 Than Ngo <than@redhat.com> - 116.0.5845.179-1
+- update to 116.0.5845.179
+
 * Tue Aug 15 2023 Than Ngo <than@redhat.com> - 116.0.5845.96-1
--  update to 116.0.5845.96 
+- update to 116.0.5845.96 
 
 * Wed Aug 09 2023 Than Ngo <than@redhat.com> - 115.0.5790.170-2
 - set use_all_cpus=1 for aarch64
