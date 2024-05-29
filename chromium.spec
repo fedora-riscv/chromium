@@ -163,10 +163,11 @@
 %global clang 1
 
 # enable|disable control flow integrity support
+# riscv64
 %global cfi 0
 %if %{clang}
 %if 0%{?fedora} || 0%{?rhel} > 7
-%global cfi 1
+%global cfi 0
 %endif
 %endif
 
@@ -454,11 +455,11 @@ Patch357: chromium-120-clang16-disable-auto-upgrade-debug-info.patch
 
 # RISC-V 64 support patch from Arch Linux
 Patch1000: swiftshader-use-llvm16.patch
-Patch1001: riscv-angle.patch
-Patch1002: riscv-dav1d.patch
-Patch1003: riscv-libgav1.patch
-Patch1004: riscv-sandbox.patch
-Patch1005: riscv-base.patch
+Patch1001: fix-rust-target.patch
+Patch1002: Debian-fix-rust-linking.patch
+Patch1003: riscv-dav1d.patch
+Patch1004: riscv-ffmpeg.patch
+Patch1005: riscv-sandbox.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -1076,11 +1077,10 @@ udev.
 
 %ifarch riscv64
 %patch -P1000 -p1 -b .llvm16
-%patch -P1001 -p1 -b .riscv-angle
-%patch -P1002 -p1 -b .riscv-dav1d
+%patch -P1001 -p1 -b .fix-rust-target
+%patch -P1002 -p1 -b .debian-fix-rust-linking
 %patch -P1003 -p1 -b .riscv-libgav1
-%patch -P1004 -p1 -b .riscv-sandbox
-%patch -P1005 -p1 -b .riscv-base
+%patch -P1005 -p1 -b .riscv-sandbox
 %endif
 
 # Change shebang in all relevant files in this directory and all subdirectories
@@ -1236,7 +1236,12 @@ CHROMIUM_CORE_GN_DEFINES+=' google_default_client_secret="%{default_client_secre
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=true'
 CHROMIUM_CORE_GN_DEFINES+=' clang_base_path="%{_prefix}"'
 CHROMIUM_CORE_GN_DEFINES+=' clang_use_chrome_plugins=false'
+%ifnarch riscv64
+CHROMIUM_CORE_GN_DEFINES+=' use_lld=true'
+%else
 CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
+CHROMIUM_CORE_GN_DEFINES+=' use_thin_lto=false'
+%endif
 %else
 CHROMIUM_CORE_GN_DEFINES+=' is_clang=false'
 CHROMIUM_CORE_GN_DEFINES+=' use_lld=false'
