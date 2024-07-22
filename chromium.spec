@@ -60,24 +60,13 @@
 %global dts_version 13
 %endif
 
-# set latest version for llvm-toolset on el7
-%global llvm_toolset_version 14.0
-
 # set name for toolset
-%if 0%{?rhel} == 7
-%global toolset devtoolset
-%else
 %global toolset gcc-toolset
-%endif
 
-%if 0%{?rhel} == 7
-%global chromium_pybin /opt/rh/rh-python38/root/usr/bin/python
-%else
 %if 0%{?rhel} == 8
 %global chromium_pybin /usr/bin/python3.9
 %else
 %global chromium_pybin %{__python3}
-%endif
 %endif
 
 # va-api only supported in rhel >= 9 and fedora
@@ -86,8 +75,8 @@
 # v4l2_codec only enable for fedora aarch64
 %global use_v4l2_codec 0
 
-# libva in EL7 and EL8 is too old.
-%if 0%{?rhel} == 7 || 0%{?rhel} == 8
+# libva is too old on el8.
+%if 0%{?rhel} == 8
 %global use_vaapi 0
 %endif
 
@@ -97,6 +86,10 @@
 %global use_vaapi 0
 %global use_v4l2_codec 1
 %endif
+%endif
+
+%if 0%{?fedora} >= 40
+%global noopenh264 1
 %endif
 
 # Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=2239523
@@ -122,7 +115,7 @@
 %global useapikey 1
 
 # Leave this alone, please.
-%global builddir out/Release
+%global chromebuilddir out/Release
 %global headlessbuilddir out/Headless
 %global remotingbuilddir out/Remoting
 
@@ -131,9 +124,6 @@
 # disable debuginfo due to a bug in debugedit on el7
 # error: canonicalization unexpectedly shrank by one character
 # https://bugzilla.redhat.com/show_bug.cgi?id=304121
-%if 0%{?rhel} == 7
-%global enable_debug 0
-%endif
 %if ! %{enable_debug}
 %global debug_package %{nil}
 %global debug_level 0
@@ -164,9 +154,6 @@
 
 # enable|disable use_custom_libcxx
 %global use_custom_libcxx 1
-%if 0%{?rhel} == 7
-%global use_custom_libcxx 0
-%endif
 
 # enable clang by default
 %global clang 1
@@ -174,15 +161,12 @@
 # enable|disable control flow integrity support
 # riscv64
 %global cfi 0
+%ifarch x86_64 aarch64
 %if %{clang}
 %if 0%{?fedora} || 0%{?rhel} > 7
 %global cfi 0
 %endif
 %endif
-
-%ifarch ppc64le
-# workaround for a bug in new llvm on f40/rawhide (ppc64le)
-%global cfi 0
 %endif
 
 # set correct toolchain
@@ -205,10 +189,6 @@
 %global use_qt 1
 %endif
 %endif
-
-# Chromium's fork of ICU is now something we can't unbundle.
-# This is left here to ease the change if that ever switches.
-%global bundleicu 1
 
 # bundle re2, jsoncpp, woff2 - build errors with use_custom_libcxx=true
 %global bundlere2 1
@@ -233,11 +213,11 @@
 # enable bundleminizip for Fedora > 39 due to switch to minizip-ng
 # which breaks the build
 %global bundleminizip 0
-%if 0%{?rhel} == 7 || 0%{?fedora} > 39
+%if 0%{?fedora} > 39
 %global bundleminizip 1
 %endif
 
-%if 0%{?rhel} == 7 || 0%{?rhel} == 8
+%if 0%{?rhel} == 8
 %global bundleharfbuzz 1
 %global bundlelibwebp 1
 %global bundlelibpng 1
@@ -247,6 +227,7 @@
 %global bundlefontconfig 1
 %global bundleffmpegfree 1
 %global bundlebrotli 1
+%global bundleicu 1
 %global bundlelibopenjpeg2 1
 %global bundlelibtiff 1
 %global bundlecrc32c 1
@@ -255,11 +236,14 @@
 %else
 %if 0%{?fedora} > 38 || 0%{?rhel} > 9
 %global bundlebrotli 0
+%global bundleicu 0
+%global bundlelibwebp 0
 %else
 %global bundlebrotli 1
+%global bundleicu 1
+%global bundlelibwebp 1
 %endif
 %global bundledav1d 0
-%global bundlelibwebp 0
 %global bundlelibpng 0
 %global bundlelibjpeg 0
 %global bundlelibdrm 0
@@ -312,7 +296,7 @@
 %endif
 
 Name:	chromium%{chromium_channel}
-Version: 125.0.6422.112
+Version: 126.0.6478.182
 Release: 2.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
@@ -323,9 +307,6 @@ Patch0: chromium-70.0.3538.67-sandbox-pie.patch
 
 # Use /etc/chromium for initial_prefs
 Patch1: chromium-115-initial_prefs-etc-path.patch
-
-# system libusb
-Patch2: chromium-120-system-libusb.patch
 
 # Do not mangle zlib
 Patch5: chromium-77.0.3865.75-no-zlib-mangle.patch
@@ -370,63 +351,6 @@ Patch90: chromium-121-system-libxml.patch
 # patch for using system opus
 Patch91: chromium-108-system-opus.patch
 
-# need to explicitly include a kernel header on EL7 to support MFD_CLOEXEC, F_SEAL_SHRINK, F_ADD_SEALS, F_SEAL_SEAL
-Patch100: chromium-116-el7-include-fcntl-memfd.patch
-
-# add define HAVE_STRNDUP on epel7
-Patch101: chromium-108-el7-wayland-strndup-error.patch
-
-# Workaround for old clang 14
-# error: defaulting this default constructor would delete it after its first declaration
-Patch102: chromium-125-el7-default-constructor-involving-anonymous-union.patch
-
-# Work around old and missing headers on EPEL7
-Patch103: chromium-110-epel7-old-headers-workarounds.patch
-
-# Use old cups (chromium's code workaround breaks on gcc)
-# Revert: https://github.com/chromium/chromium/commit/c3213f8779ddc427e89d982514185ed5e4c94e91
-Patch104: chromium-99.0.4844.51-epel7-old-cups.patch
-
-# libdrm on EL7 is rather old and chromium assumes newer
-# This gets us by for now
-Patch105: chromium-125-el7-old-libdrm.patch
-
-# error: no matching function for call to 'std::basic_string<char>::erase(std::basic_string<char>::const_iterator, __gnu_cxx::__normal_iterator<const char*, std::basic_string<char> >&)'
-#   33 |   property_name.erase(property_name.cbegin(), cur);
-# Not sure how this EVER worked anywhere, but it only seems to fail on EPEL-7.
-Patch106: chromium-98.0.4758.80-epel7-erase-fix.patch
-
-# Add additional operator== to make el7 happy.
-Patch107: chromium-122-el7-extra-operator.patch
-# old v4l2 on el7
-Patch108: chromium-118-el7_v4l2_quantization.patch 
-# workaround for old clang on el7
-Patch109: chromium-114-wireless-el7.patch
-Patch110: chromium-115-buildflag-el7.patch
-Patch111: chromium-122-el7-inline-function.patch
-Patch112: chromium-125-el7-rust-proc-macro2.patch
-Patch113: chromium-121-el7-clang-version-warning.patch
-Patch114: chromium-123-el7-clang-build-failure.patch
-Patch115: chromium-124-el7-size_t.patch
-
-# fixes for old clang version in el7 (clang <= 15)
-# compiler build errors, no matching constructor for initialization
-Patch116: chromium-125-el7-no_matching_constructor.patch
-Patch117: chromium-115-el7-compiler-SkColor4f.patch
-
-# workaround for clang bug, https://github.com/llvm/llvm-project/issues/57826
-Patch118: chromium-124-el7-workaround_clang_bug-structured_binding.patch
-
-# missing typename
-Patch119: chromium-125-el7-typename.patch
-
-# error: invalid operands to binary expression
-Patch120: chromium-117-el7-string-convert.patch
-Patch121: chromium-125-el7-assert.patch
-Patch122: chromium-125-el7-constexpr.patch
-Patch123: chromium-125-el7-type-alias.patch
-Patch124: chromium-125-el7-optional-workaround-assert.patch
-
 # system ffmpeg
 # need for old ffmpeg 5.x on epel9
 Patch129: chromium-125-ffmpeg-5.x-reordered_opaque.patch
@@ -440,60 +364,44 @@ Patch133: chromium-121-system-old-ffmpeg.patch
 # disable FFmpegAllowLists by default to allow external ffmpeg
 patch134: chromium-125-disable-FFmpegAllowLists.patch
 
-# revert AV1 VAAPI video encode due to old libva on el9 (rhel9.3)
-Patch140: chromium-122-revert-av1enc-el9.patch
-
 # file conflict with old kernel on el8/el9
 Patch141: chromium-118-dma_buf_export_sync_file-conflict.patch
 
 # add correct path for Qt6Gui header and libs
 Patch150: chromium-124-qt6.patch
 
-# disable memory tagging in epel7 and epel8 on aarch64 due to new feature IFUNC-Resolver
-# not supported in old glibc < 2.30, error: fatal error: 'sys/ifunc.h' file not found
-Patch305: chromium-124-arm64-memory_tagging.patch
-
-# compiler errors on el7/el8 and f38 (clang <17)
-Patch307: chromium-125-el-NativeValueTraits-p1.patch
-Patch308: chromium-125-el-NativeValueTraits-p2.patch
+# disable memory tagging (epel8 on aarch64) due to new feature IFUNC-Resolver
+# it is not supported in old glibc < 2.30, error: fatal error: 'sys/ifunc.h' file not found
+Patch305: chromium-124-el8-arm64-memory_tagging.patch
+Patch306: chromium-126-el8-ifunc-header.patch
+# build error: unknown architectural extension on aarch64 (epel8)
+Patch307: chromium-124-el8-libdav1d-aarch64.patch
+# 64kpage support on aarch64 (el8)
+Patch308: chromium-124-el8-support-64kpage.patch
 
 # enable fstack-protector-strong
 Patch312: chromium-123-fstack-protector-strong.patch
 
-# rust is old, function or associated item not found in `OsStr`
-Patch313: chromium-123-rust-clap_lex.patch
-
-Patch314: chromium-124-clang16-buildflags.patch
-
-# remove ldflags -Wl,-mllvm,-disable-auto-upgrade-debug-info which is not supported
-Patch315: chromium-122-clang16-disable-auto-upgrade-debug-info.patch
-
 # add -ftrivial-auto-var-init=zero and -fwrapv
 Patch316: chromium-122-clang-build-flags.patch
-
-# build error: unknown architectural extension on aarch64 (epel and < f39)
-Patch317: chromium-124-libdav1d-aarch64.patch
 
 # Workaround for https://bugzilla.redhat.com/show_bug.cgi?id=2239523
 # https://bugs.chromium.org/p/chromium/issues/detail?id=1145581#c60
 # Disable BTI until this is fixed upstream.
 Patch352: chromium-117-workaround_for_crash_on_BTI_capable_system.patch
 
-# remove flag split-threshold-for-reg-with-hint, it' not supported in clang <= 17
-Patch354: chromium-120-split-threshold-for-reg-with-hint.patch
+# remove flag split-threshold-for-reg-with-hint, it's not supported in clang <= 17
+Patch354: chromium-126-split-threshold-for-reg-with-hint.patch
 
 # use system libstdc++
-Patch355: chromium-125-system-libstdc++.patch
+Patch355: chromium-126-system-libstdc++.patch
 
 # set clang_lib path
 Patch358: chromium-124-rust-clang_lib.patch
 
-# ERROR Unresolved dependencies
-Patch359: chromium-124-libavif-deps.patch
-
 # PowerPC64 LE support
-# Patches taken from Debian, Timothy Pearson's patchset
-# https://salsa.debian.org/chromium-team/chromium/-/tree/master/debian/patches/ppc64le?ref_type=heads
+# Timothy Pearson's patchset
+# https://gitlab.solidsilicon.io/public-development/open-source/chromium/openpower-patches/-/tree/chromium-126/patches/ppc64le
 Patch360: 0001-linux-seccomp-bpf-ppc64-glibc-workaround-in-SIGSYS-h.patch
 Patch361: 0001-sandbox-Enable-seccomp_bpf-for-ppc64.patch
 Patch362: 0001-services-service_manager-sandbox-linux-Fix-TCGETS-de.patch
@@ -546,34 +454,29 @@ Patch400: fix-rustc.patch
 Patch401: fix-rust-linking.patch
 Patch402: fix-breakpad-compile.patch
 Patch403: fix-partition-alloc-compile.patch
-Patch404: 0002-Add-ppc64-trap-instructions.patch
+Patch404: fix-study-crash.patch
+Patch405: memory-allocator-dcheck-assert-fix.patch
+Patch406: 0002-Add-ppc64-trap-instructions.patch
 
 Patch407: fix-ppc64-linux-syscalls-headers.patch
-Patch409: use-sysconf-page-size-on-ppc64.patch
+Patch408: use-sysconf-page-size-on-ppc64.patch
+Patch409: partition-alloc-4k-detect.patch
 
 Patch410: dawn-fix-typos.patch
 Patch411: dawn-fix-ppc64le-detection.patch
 
-Patch412: fix-swiftshader-compile.patch
-
 # Suppress harmless compiler warning messages that appear on ppc64 due to arch-specific warning flags being passed
-Patch413: fix-unknown-warning-option-messages.diff
+Patch412: fix-unknown-warning-option-messages.diff
 
-# upstream patches
-# 64kpage support on el8
-Patch500: chromium-124-el8-support-64kpage.patch
-# add missing include for usage of FieldDataManager in autofill_agent.h
-Patch501: chromium-125-missing-include-FieldDataManager.patch
-# [devtools] fix a missing build dependency to a generated file
-Patch502: chromium-125-devtools-build-dependency.patch
+# error: undefined symbol: llvm::MCAsmInfoXCOFF::MCAsmInfoXCOFF()
+Patch413: fix-swiftshader-compile.patch
 
 # RISC-V 64 support patch from Arch Linux
-Patch1000: swiftshader-use-llvm16.patch
-Patch1001: fix-rust-target.patch
-Patch1002: Debian-fix-rust-linking.patch
-Patch1003: riscv-dav1d.patch
-Patch1004: riscv-ffmpeg.patch
-Patch1005: riscv-sandbox.patch
+Patch1000: riscv-build.patch
+Patch1001: riscv-sandbox.patch
+Patch1002: riscv-dav1d.patch
+Patch1003: riscv-swiftshader.patch
+Patch1004: riscv-cpuinfo.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -613,25 +516,17 @@ Source15: https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-%{esbuil
 BuildRequires: golang-github-evanw-esbuild
 %endif
 
-%if 0%{?rhel} == 7
-BuildRequires: rh-python38
-%endif
-
 %if %{clang}
-%if 0%{?rhel} == 7
-BuildRequires: llvm-toolset-%{llvm_toolset_version}
-%else
 BuildRequires: clang
 BuildRequires: clang-tools-extra
 BuildRequires: llvm
 BuildRequires: lld
-%endif
 # needs for libatomic
-%if 0%{?rhel} >= 7
+%if 0%{?rhel} >= 8
 BuildRequires: %{toolset}-%{dts_version}-libatomic-devel
 %endif
 %else
-%if 0%{?rhel} == 7 || 0%{?rhel} == 8
+%if 0%{?rhel} == 8
 BuildRequires: %{toolset}-%{dts_version}-binutils, %{toolset}-%{dts_version}-libatomic-devel
 %endif
 %if 0%{?fedora} || 0%{?rhel} > 8
@@ -658,6 +553,10 @@ Conflicts: ffmpeg-libs%{_isa} < 5.1.4
 Conflicts: libavformat-free%{_isa} < 6.0.1
 Conflicts: ffmpeg-libs%{_isa} < 6.0.1-2
 %endif
+%endif
+
+%if 0%{?noopenh264}
+BuildRequires: pkgconfig(openh264)
 %endif
 
 # build with system libaom
@@ -823,7 +722,7 @@ BuildRequires:	libffi-devel
 # If this is true, we're using the bundled icu.
 # We'd like to use the system icu every time, but we cannot always do that.
 # Not newer than 54 (at least not right now)
-BuildRequires:	libicu-devel = 54.1
+BuildRequires:	libicu-devel >= 68
 %endif
 
 %if ! %{bundlelibjpeg}
@@ -934,17 +833,12 @@ Requires: u2f-hidraw-policy
 
 Requires: chromium-common%{_isa} = %{version}-%{release}
 
-# rhel 7: x86_64
-# rhel 8 or newer: x86_64, aarch64
-# fedora 38 or newer: x86_64, aarch64, ppc64le
-%if 0%{?rhel} == 7
-ExclusiveArch: x86_64
-%else
+# rhel 8 or newer and fedora < 40: x86_64, aarch64
+# fedora 40 or newer: x86_64, aarch64, ppc64le
 %if 0%{?fedora} >= 40
 ExclusiveArch: x86_64 aarch64 ppc64le riscv64
 %else
 ExclusiveArch: x86_64 aarch64 riscv64
-%endif
 %endif
 
 # Bundled bits (I'm sure I've missed some)
@@ -1129,13 +1023,26 @@ A minimal headless client built from Chromium. headless_shell is built
 without support for alsa, cups, dbus, gconf, gio, kerberos, pulseaudio, or 
 udev.
 
+%package qt5-ui
+Summary: Qt5 UI built from Chromium
+Requires: chromium%{_isa} = %{version}-%{release}
+
+%description qt5-ui
+Qt5 UI for chromium.
+
+%package qt6-ui
+Summary: Qt6 UI built from Chromium
+Requires: chromium%{_isa} = %{version}-%{release}
+
+%description qt6-ui
+Qt6 UI for chromium.
+
 %prep
 %setup -q -n chromium-%{version}
 
 ### Chromium Fedora Patches ###
 %patch -P0 -p1 -b .sandboxpie
 %patch -P1 -p1 -b .etc
-%patch -P2 -p1 -b .system-libusb
 %patch -P5 -p1 -b .nozlibmangle
 %patch -P6 -p1 -b .nounrar
 %patch -P8 -p1 -b .widevine-other-locations
@@ -1178,40 +1085,6 @@ udev.
 %patch -P134 -p1 -b .disable-FFmpegAllowLists
 %endif
 
-# EPEL specific patches
-%if 0%{?rhel} == 7
-cp /opt/rh/%{toolset}-%{dts_version}/root/usr/include/c++/%{dts_version}/optional .
-%patch -P100 -p1 -b .el7-memfd-fcntl-include
-%patch -P101 -p1 -b .wayland-strndup-error
-%patch -P102 -p1 -b .default-constructor-involving-anonymous-union
-%patch -P103 -p1 -b .epel7-header-workarounds
-%patch -P104 -p1 -b .el7cups
-%patch -P105 -p1 -b .el7-old-libdrm
-%patch -P106 -p1 -b .el7-erase-fix
-%patch -P107 -p1 -b .el7-extra-operator-equalequal
-%patch -P108 -p1 -b .el7_v4l2_quantization
-%patch -P109 -p1 -b .wireless
-%patch -P110 -p1 -b .buildflag-el7
-%patch -P111 -p1 -b .inline-function-el7
-%patch -P112 -p1 -R -b  .rust-proc-macro2
-%patch -P113 -p1 -b .el7-clang-version-warning
-%patch -P114 -p1 -b .clang-build-failure
-%patch -P115 -p1 -b .el7-size_t
-%patch -P116 -p1 -b .no_matching_constructor
-%patch -P117 -p1 -b .workaround_clang-SkColor4f
-%patch -P118 -p1 -b .workaround_clang_bug-structured_binding
-%patch -P119 -p1 -b .typename
-%patch -P120 -p1 -b .string-convert
-%patch -P121 -p1 -b .assert
-%patch -P122 -p1 -b .constexpr
-%patch -P123 -p1 -b .el7-type-alias
-%patch -P124 -p1 -b .el7-workaround-assert
-%endif
-
-%if 0%{?rhel} == 9
-%patch -P140 -p1 -b .revert-av1enc
-%endif
-
 %if 0%{?rhel} == 8 || 0%{?rhel} == 9
 %patch -P141 -p1 -b .dma_buf_export_sync_file-conflict
 %endif
@@ -1220,40 +1093,31 @@ cp /opt/rh/%{toolset}-%{dts_version}/root/usr/include/c++/%{dts_version}/optiona
 %patch -P150 -p1 -b .qt6
 %endif
 
-%if 0%{?rhel} && 0%{?rhel} <= 8
+%if 0%{?rhel} == 8
 %ifarch aarch64
-%patch -P305 -p1 -b .memory_tagging
-%patch -P317 -p1 -b .libdav1d-aarch64
+%patch -P305 -p1 -b .el8-memory_tagging
+%patch -P306 -p1 -b .el8-ifunc-header
+%patch -P307 -p1 -b .el8-libdav1d-aarch64
+%patch -P308 -p1 -b .el8-support-64kpage.patch
 %endif
-%endif
-
-%if 0%{?rhel} && 0%{?rhel} < 9 || 0%{?fedora} && 0%{?fedora} < 39
-%patch -P307 -p1 -b .el-NativeValueTraits-p1
-%patch -P308 -p1 -b .el-NativeValueTraits
-%patch -P314 -p1 -b .clang16-buildflag
-%patch -P315 -p1 -b .clang16-disable-auto-upgrade-debug-info
 %endif
 
 %patch -P312 -p1 -b .fstack-protector-strong
 
-%if 0%{?rhel} && 0%{?rhel} < 10
-%patch -P313 -p1 -b .rust-clap_lex
-%endif
-
-%if 0%{?rhel} >= 8 || 0%{?fedora}
 %patch -P316 -p1 -b .clang-build-flags
-%endif
 
 %if %{disable_bti}
 %patch -P352 -p1 -b .workaround_for_crash_on_BTI_capable_system
 %endif
 
-%patch -P354 -p1 -b .revert-split-threshold-for-reg-with-hint
+%if 0%{?rhel} && 0%{?rhel} < 10 || 0%{?fedora} && 0%{?fedora} < 40
+%patch -P354 -p1 -b .split-threshold-for-reg-with-hint
+%endif
+
 %if ! %{use_custom_libcxx}
 %patch -P355 -p1 -b .system-libstdc++
 %endif
 %patch -P358 -p1 -b .rust-clang_lib
-%patch -P359 -p1 -b .libavif-deps
 
 %ifarch ppc64le
 %patch -P360 -p1 -b .0001-linux-seccomp-bpf-ppc64-glibc-workaround-in-SIGSYS-h
@@ -1306,32 +1170,27 @@ cp /opt/rh/%{toolset}-%{dts_version}/root/usr/include/c++/%{dts_version}/optiona
 %patch -P401 -p1 -b .fix-rust-linking
 %patch -P402 -p1 -b .fix-breakpad-compile
 %patch -P403 -p1 -b .fix-partition-alloc-compile
-%patch -P404 -p1 -b .0002-Add-ppc64-trap-instructions
+%patch -P404 -p1 -b .fix-study-crash
+%patch -P405 -p1 -b .memory-allocator-dcheck-assert-fix
+%patch -P406 -p1 -b .0002-Add-ppc64-trap-instructions
 
 %patch -P407 -p1 -b .fix-ppc64-linux-syscalls-headers
-%patch -P409 -p1 -b .use-sysconf-page-size-on-ppc64
+%patch -P408 -p1 -b .use-sysconf-page-size-on-ppc64
+%patch -P409 -p1 -b .partition-alloc-4k-detect
 
 %patch -P410 -p1 -b .dawn-fix-typos
 %patch -P411 -p1 -b .dawn-fix-ppc64le-detection
 
-%patch -P412 -p1 -b .fix-swiftshader-compile.patch
-%patch -P413 -p1 -b .fix-unknown-warning-option-messages
+%patch -P412 -p1 -b .fix-unknown-warning-option-messages
+%patch -P413 -p1 -b .fix-swiftshader-compile
 %endif
-
-%%ifarch aarch64
-%if 0%{?rhel} == 8
-%patch -P500 -p1 -b .el8-support-64kpage.patch
-%endif
-%endif
-%patch -P501 -p1 -b .missing-include-FieldDataManage
-%patch -P502 -p1 -b .devtools-build-dependency
 
 %ifarch riscv64
-%patch -P1000 -p1 -b .llvm16
-%patch -P1001 -p1 -b .fix-rust-target
-%patch -P1002 -p1 -b .debian-fix-rust-linking
-%patch -P1003 -p1 -b .riscv-libgav1
-%patch -P1005 -p1 -b .riscv-sandbox
+%patch -P1000 -p1
+%patch -P1001 -p1
+%patch -P1002 -p1
+%patch -P1003 -p1
+%patch -P1004 -p1
 %endif
 
 # Change shebang in all relevant files in this directory and all subdirectories
@@ -1408,11 +1267,8 @@ FLAGS+=' -Wno-unused-const-variable -Wno-unneeded-internal-declaration -Wno-unkn
 %endif
 
 %if %{system_build_flags}
-CFLAGS=${CFLAGS/-g }
 CFLAGS=${CFLAGS/-fexceptions}
 CFLAGS=${CFLAGS/-Wp,-D_GLIBCXX_ASSERTIONS}
-CFLAGS=${CFLAGS/-fcf-protection}
-CFLAGS=${CFLAGS/-fstack-clash-protection}
 CFLAGS="$CFLAGS $FLAGS"
 CXXFLAGS="$CFLAGS"
 %else
@@ -1448,16 +1304,6 @@ export CXXFLAGS
 export LDFLAGS
 export RUSTFLAGS
 
-# enable toolset on el7
-%if 0%{?rhel} == 7
-. /opt/rh/rh-python38/enable
-%if %{clang}
-. /opt/rh/llvm-toolset-%{llvm_toolset_version}/enable
-%else
-. /opt/rh/%{toolset}-%{dts_version}/enable
-%endif
-%endif
-
 # enable gcc toolset on el8
 %if 0%{?rhel} == 8 && ! %{clang}
 . /opt/rh/%{toolset}-%{dts_version}/enable
@@ -1492,6 +1338,8 @@ CHROMIUM_CORE_GN_DEFINES+=' chrome_pgo_phase=0'
 
 %if ! %{cfi}
 CHROMIUM_CORE_GN_DEFINES+=' is_cfi=false use_thin_lto=false'
+%else
+CHROMIUM_CORE_GN_DEFINES+=' is_cfi=true use_thin_lto=true'
 %endif
 
 %if %{useapikey}
@@ -1564,8 +1412,14 @@ CHROMIUM_BROWSER_GN_DEFINES+=' ffmpeg_branding="Chrome" proprietary_codecs=true 
 %else
 CHROMIUM_BROWSER_GN_DEFINES+=' ffmpeg_branding="Chromium" proprietary_codecs=false is_component_ffmpeg=false enable_ffmpeg_video_decoders=false media_use_ffmpeg=true'
 %endif
+# link against noopenh264 library
+%if 0%{?noopenh264}
+CHROMIUM_BROWSER_GN_DEFINES+=' media_use_openh264=true'
+CHROMIUM_BROWSER_GN_DEFINES+=' rtc_use_h264=true'
+%else
 CHROMIUM_BROWSER_GN_DEFINES+=' media_use_openh264=false'
 CHROMIUM_BROWSER_GN_DEFINES+=' rtc_use_h264=false'
+%endif
 CHROMIUM_BROWSER_GN_DEFINES+=' use_kerberos=true'
 
 %if %{use_qt}
@@ -1724,6 +1578,9 @@ system_libs=()
 %if ! %{bundleflac}
 	system_libs+=(flac)
 %endif
+%if 0%{?noopenh264}
+	system_libs+=(openh264)
+%endif
 
 build/linux/unbundle/replace_gn_files.py --system-libraries ${system_libs[@]}
 
@@ -1736,17 +1593,17 @@ fi
 %if %{bootstrap}
 tools/gn/bootstrap/bootstrap.py --gn-gen-args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES"
 %else
-mkdir -p %{builddir} && cp -a %{_bindir}/gn %{builddir}/
+mkdir -p %{chromebuilddir} && cp -a %{_bindir}/gn %{chromebuilddir}/
 %endif
 
-%{builddir}/gn --script-executable=%{chromium_pybin} gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES" %{builddir}
+%{chromebuilddir}/gn --script-executable=%{chromium_pybin} gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES" %{chromebuilddir}
 
 %if %{build_headless}
-%{builddir}/gn --script-executable=%{chromium_pybin} gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_HEADLESS_GN_DEFINES" %{headlessbuilddir}
+%{chromebuilddir}/gn --script-executable=%{chromium_pybin} gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_HEADLESS_GN_DEFINES" %{headlessbuilddir}
 %endif
 
 %if %{build_remoting}
-%{builddir}/gn --script-executable=%{chromium_pybin} gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES" %{remotingbuilddir}
+%{chromebuilddir}/gn --script-executable=%{chromium_pybin} gen --args="$CHROMIUM_CORE_GN_DEFINES $CHROMIUM_BROWSER_GN_DEFINES" %{remotingbuilddir}
 %endif
 
 %if %{build_headless}
@@ -1754,18 +1611,18 @@ mkdir -p %{builddir} && cp -a %{_bindir}/gn %{builddir}/
 %build_target %{headlessbuilddir} headless_shell
 %endif
 
-%build_target %{builddir} chrome
-%build_target %{builddir} chrome_sandbox
+%build_target %{chromebuilddir} chrome
+%build_target %{chromebuilddir} chrome_sandbox
 
 %if %{build_chromedriver}
-%build_target %{builddir} chromedriver
+%build_target %{chromebuilddir} chromedriver
 %endif
 
 %if %{build_clear_key_cdm}
-%build_target %{builddir} clear_key_cdm
+%build_target %{chromebuilddir} clear_key_cdm
 %endif
 
-%build_target %{builddir} policy_templates
+%build_target %{chromebuilddir} policy_templates
 
 %if %{build_remoting}
 %build_target %{remotingbuilddir} remoting_all
@@ -1806,8 +1663,11 @@ sed -i "s|@@CHROMIUM_BROWSER_CHANNEL@@|$CHROMIUM_BROWSER_CHANNEL|g" %{buildroot}
 ln -s ../..%{chromium_path}/%{chromium_browser_channel}.sh %{buildroot}%{_bindir}/%{chromium_browser_channel}
 mkdir -p %{buildroot}%{_mandir}/man1/
 
-pushd %{builddir}
-	cp -a chrom*.pak resources.pak icudtl.dat %{buildroot}%{chromium_path}
+pushd %{chromebuilddir}
+%if %{bundleicu}
+	cp -a icudtl.dat %{buildroot}%{chromium_path}
+%endif
+	cp -a chrom*.pak resources.pak %{buildroot}%{chromium_path}
 	cp -a locales/*.pak %{buildroot}%{chromium_path}/locales/
 	%ifarch x86_64 aarch64 ppc64le
 		cp -a libvk_swiftshader.so %{buildroot}%{chromium_path}
@@ -1917,7 +1777,7 @@ popd
 # need to strip binaries explicitly when debug is disable
 %if ! %{enable_debug}
 pushd %{buildroot}%{chromium_path}/
-for f in *.so chrome_crashpad_handler chrome-sandbox chromium-browser headless_shell chromedriver ; do
+for f in *.so *.so.1 chrome_crashpad_handler chrome-sandbox chromium-browser headless_shell chromedriver ; do
    [ -f $f ] && strip $f
 done
 popd
@@ -2010,17 +1870,21 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/libEGL.so
 %{chromium_path}/libGLESv2.so
 %attr(4755, root, root) %{chromium_path}/chrome-sandbox
-%if %{use_qt}
-%{chromium_path}/libqt5_shim.so
-%endif
-%if %{use_qt6}
-%{chromium_path}/libqt6_shim.so
-%endif
 %{_mandir}/man1/%{chromium_browser_channel}.*
 %{_datadir}/icons/hicolor/*/apps/%{chromium_browser_channel}.png
 %{_datadir}/applications/*.desktop
 %{_datadir}/metainfo/*.appdata.xml
 %{_datadir}/gnome-control-center/default-apps/chromium-browser.xml
+
+%if %{use_qt}
+%files qt5-ui
+%{chromium_path}/libqt5_shim.so
+%endif
+
+%if %{use_qt6}
+%files qt6-ui
+%{chromium_path}/libqt6_shim.so
+%endif
 
 %files common
 %if %{build_clear_key_cdm}
@@ -2033,7 +1897,9 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %{chromium_path}/libEGL.so*
 %{chromium_path}/libGLESv2.so*
 %endif
+%if %{bundleicu}
 %{chromium_path}/icudtl.dat
+%endif
 %dir %{chromium_path}/
 %dir %{chromium_path}/locales/
 %lang(af) %{chromium_path}/locales/af.pak
@@ -2134,6 +2000,74 @@ getent group chrome-remote-desktop >/dev/null || groupadd -r chrome-remote-deskt
 %endif
 
 %changelog
+* Sat Jul 20 2024 Than Ngo <than@redhat.com> - 126.0.6478.182-2
+- fix condition for is_cfi/use_thin_lto on aarch64/ppc64le
+- update powerpc patches
+
+* Tue Jul 16 2024 Than Ngo <than@redhat.com> - 126.0.6478.182-1
+- update to 126.0.6478.182
+  * High CVE-2024-6772: Inappropriate implementation in V8
+  * High CVE-2024-6773: Type Confusion in V8
+  * High CVE-2024-6774: Use after free in Screen Capture
+  * High CVE-2024-6775: Use after free in Media Stream
+  * High CVE-2024-6776: Use after free in Audio
+  * High CVE-2024-6777: Use after free in Navigation
+  * High CVE-2024-6778: Race in DevTools
+  * High CVE-2024-6779: Out of bounds memory access in V8
+
+* Sun Jul 07 2024 Than Ngo <than@redhat.com> - 126.0.6478.126-2
+- fixed rhbz#2293202, chromium Wayland UI regression
+
+* Tue Jun 25 2024 Than Ngo <than@redhat.com> - 126.0.6478.126-1
+- update to 126.0.6478.126
+  * High CVE-2024-6290: Use after free in Dawn
+  * High CVE-2024-6291: Use after free in Swiftshader
+  * High CVE-2024-6292: Use after free in Dawn
+  * High CVE-2024-6293: Use after free in Dawn 
+
+* Wed Jun 19 2024 Than Ngo <than@redhat.com> - 126.0.6478.114-1
+- update to 126.0.6478.114
+  * High CVE-2024-6100: Type Confusion in V8
+  * High CVE-2024-6101: Inappropriate implementation in WebAssembly
+  * High CVE-2024-6102: Out of bounds memory access in Dawn
+  * High CVE-2024-6103: Use after free in Dawn
+
+* Wed Jun 12 2024 Than Ngo <than@redhat.com> - 126.0.6478.55-1
+- update to 126.0.6478.55
+  * High CVE-2024-5830: Type Confusion in V8
+  * High CVE-2024-5831: Use after free in Dawn
+  * High CVE-2024-5832: Use after free in Dawn
+  * High CVE-2024-5833: Type Confusion in V8
+  * High CVE-2024-5834: Inappropriate implementation in Dawn
+  * High CVE-2024-5835: Heap buffer overflow in Tab Groups
+  * High CVE-2024-5836: Inappropriate Implementation in DevTools
+  * High CVE-2024-5837: Type Confusion in V8
+  * High CVE-2024-5838: Type Confusion in V8
+  * Medium CVE-2024-5839: Inappropriate Implementation in Memory Allocator
+  * Medium CVE-2024-5840: Policy Bypass in CORS
+  * Medium CVE-2024-5841: Use after free in V8
+  * Medium CVE-2024-5842: Use after free in Browser UI
+  * Medium CVE-2024-5843: Inappropriate implementation in Downloads
+  * Medium CVE-2024-5844: Heap buffer overflow in Tab Strip
+  * Medium CVE-2024-5845: Use after free in Audio
+  * Medium CVE-2024-5846: Use after free in PDFium
+  * Medium CVE-2024-5847: Use after free in PDFium
+
+* Fri May 31 2024 Than Ngo <than@redhat.com> - 125.0.6422.141-1
+- update to 125.0.6422.141
+  * High CVE-2024-5493: Heap buffer overflow in WebRTC
+  * High CVE-2024-5494: Use after free in Dawn
+  * High CVE-2024-5495: Use after free in Dawn
+  * High CVE-2024-5496: Use after free in Media Session
+  * High CVE-2024-5497: Out of bounds memory access in Keyboard Inputs
+  * High CVE-2024-5498: Use after free in Presentation API
+  * High CVE-2024-5499: Out of bounds write in Streams API
+- fixed rhbz#2264332 - Chromium is unable to send/receive video on MS Teams
+- cleanup chromium.conf
+
+* Wed May 29 2024 Than Ngo <than@redhat.com> - 125.0.6422.112-3
+- build against noopenh264
+
 * Wed May 29 2024 Songsong Zhang <U2FsdGVkX1@gmail.com> - 125.0.6422.112-2.rv64
 - Add riscv64 support
 - https://github.com/felixonmars/archriscv-packages/tree/master/chromium
