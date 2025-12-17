@@ -1,0 +1,13 @@
+diff --git a/build/config/clang/BUILD.gn b/build/config/clang/BUILD.gn
+index 8a811e5..ed1d403 100644
+--- a/build/config/clang/BUILD.gn
++++ b/build/config/clang/BUILD.gn
+@@ -179,6 +179,8 @@ template("clang_lib") {
+           _dir = "armhf-redhat-linux-gnu"
+         } else if (current_cpu == "ppc64") {
+           _dir = "ppc64le-redhat-linux-gnu"
++        } else if (current_cpu == "riscv64") {
++          _dir = "riscv64-redhat-linux-gnu"
+         } else {
+           assert(false)  # Unhandled cpu type
+         }
