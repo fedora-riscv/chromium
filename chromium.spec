@@ -254,8 +254,8 @@
 %endif
 
 Name:	chromium
-Version: 143.0.7499.109
-Release: 2.rv64%{?dist}
+Version: 143.0.7499.146
+Release: 1.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
 License: BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
@@ -484,8 +484,6 @@ Patch604: riscv-ffmpeg-140.patch
 # Fix Wayland URI DnD issues
 Patch1001: chromium-142-Add-ExtractData-support-for-text-uri-list.patch
 Patch1002: chromium-142-Update-pointer-position-during-draggin.patch
-# Fix Wayland Omnibox issue
-Patch1003: chromium-143-omnibox-next-Improve-cutout-mouse-handling-for-Wayla.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -786,10 +784,6 @@ BuildRequires:	opus-devel
 BuildRequires: %{chromium_pybin}
 %if %{gtk_version} == 4
 BuildRequires: pkgconfig(gtk4)
-BuildRequires: pkgconfig(xrandr)
-BuildRequires: pkgconfig(atspi-2)
-BuildRequires: pkgconfig(atk-bridge-2.0)
-BuildRequires: pkgconfig(xcomposite)
 BuildRequires: pkgconfig(xcursor)
 BuildRequires: pkgconfig(xi)
 BuildRequires: pkgconfig(xrender)
@@ -806,6 +800,17 @@ BuildRequires: pkgconfig(gtk+-3.0)
 # GTK modules it expects to find for some reason.
 Requires: libcanberra-gtk3%{_isa}
 %endif
+
+# Build deps of Chromium proper which are often transitively pulled in by toolkits (GTK, Qt),
+# but are still required without them.
+BuildRequires: pkgconfig(atspi-2)
+BuildRequires: pkgconfig(atk-bridge-2.0)
+BuildRequires: pkgconfig(pangocairo)
+BuildRequires: pkgconfig(xkbcommon)
+BuildRequires: pkgconfig(xcomposite)
+BuildRequires: pkgconfig(xrandr)
+BuildRequires: wayland-devel
+
 %if ! %{bundlepylibs}
 %if 0%{?fedora} || 0%{?rhel} >= 8
 BuildRequires: python3-jinja2
@@ -1185,7 +1190,6 @@ Qt6 UI for chromium.
 # Upstream patches
 %patch -P1001 -p1 -b .Add-ExtractData-support-for-text-uri-list.patch
 %patch -P1002 -p1 -b .Update-pointer-position-during-draggin.patch
-%patch -P1003 -p1 -b .Improve-cutout-mouse-handling-for-Wayla.patch
 
 %ifarch riscv64
 %patch -P601 -p1 -b .riscv-build
@@ -1839,8 +1843,15 @@ fi
 %endif
 
 %changelog
-* Wed Dec 17 2025 Liu Yang <Yang.Liu.sn@gmail.com> - 143.0.7499.109-2.rv64
-- Add riscv64 support
+* Thu Dec 18 2025 Liu Yang <Yang.Liu.sn@gmail.com> - 143.0.7499.146-1.rv64
+- Add riscv64 support.
+
+* Wed Dec 17 2025 Than Ngo <than@redhat.com> - 143.0.7499.146-1
+- Update to 143.0.7499.146
+  * High CVE-2025-14765: Use after free in WebGPU
+  * High CVE-2025-14766: Out of bounds read and write in V8
+- Force dark mode when auto dark mode web content is on
+- Remove omnibox-next-Improve-cutout-mouse-handling-for-Wayla patch, as it's merged
 
 * Thu Dec 11 2025 Than Ngo <than@redhat.com> - 143.0.7499.109-2
 - Enable gtk4 by default
