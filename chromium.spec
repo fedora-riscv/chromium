@@ -254,7 +254,7 @@
 %endif
 
 Name:	chromium
-Version: 143.0.7499.146
+Version: 143.0.7499.169
 Release: 1.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
@@ -1843,8 +1843,11 @@ fi
 %endif
 
 %changelog
-* Thu Dec 18 2025 Liu Yang <Yang.Liu.sn@gmail.com> - 143.0.7499.146-1.rv64
+* Sun Dec 21 2025 Liu Yang <Yang.Liu.sn@gmail.com> - 143.0.7499.169-1.rv64
 - Add riscv64 support.
+
+* Sat Dec 20 2025 Than Ngo <than@redhat.com> - 143.0.7499.169-1
+- Update to 143.0.7499.169
 
 * Wed Dec 17 2025 Than Ngo <than@redhat.com> - 143.0.7499.146-1
 - Update to 143.0.7499.146
