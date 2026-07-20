@@ -530,6 +530,7 @@ Patch603: chromium-150-Add-AutoDarkModeSkipImages-flag-to-bypass-image-dark-mode
 Patch604: chromium-150-Make-dark-mode-apply-filter-to-images-irrespective-of-layout-zoom.patch
 Patch605: chromium-150-Use-64px-css-pixels-absolute-threshold-for-dark-image-classification.patch
 Patch606: chromium-150-Add-size-threshold-for-classifying-SVG-documents-for-auto-dark-mode.patch
+Patch607: chromium-150-Add-AutoDarkModeSVGSizeThreshold-kill-switch-flag.patch
 
 # Use chromium-latest.py to generate clean tarball from released build tarballs, found here:
 # http://build.chromium.org/buildbot/official/
@@ -1250,6 +1251,7 @@ Qt6 UI for chromium.
 %patch -P604 -p1 -b .Make-dark-mode-apply-filter-to-images-irrespective-of-layout-zoom
 %patch -P605 -p1 -b .Use-64px-css-pixels-absolute-threshold-for-dark-image-classification
 %patch -P606 -p1 -b .Add-size-threshold-for-classifying-SVG-documents-for-auto-dark-mode
+%patch -P607 -p1 -b .Add-AutoDarkModeSVGSizeThreshold-kill-switch-flag
 
 # Change shebang in all relevant files in this directory and all subdirectories
 # See `man find` for how the `-exec command {} +` syntax works
@@ -1930,6 +1932,7 @@ fi
   * CVE-2026-15904: Use after free in Ozone
   * CVE-2026-15905: Use after free in Aura
 - Fix rhbz#2501811, Drop AI policy which breaks DoH settings
+- Improve auto darkmode
 
 * Wed Jul 15 2026 Fedora Release Engineering <releng@fedoraproject.org> - 150.0.7871.124-2
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_45_Mass_Rebuild
