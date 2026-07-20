@@ -271,8 +271,8 @@
 %endif
 
 Name:	chromium
-Version: 150.0.7871.124
-Release: 2%{?dist}
+Version: 150.0.7871.128
+Release: 1%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
 License: BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
@@ -562,8 +562,6 @@ Source12: node-%{nodejs_version}-stripped.tar.gz
 Source13: nodejs-sources.sh
 BuildRequires: openssl-devel
 %endif
-# Disable AI Mode settings
-Source14: disable-ai.json
 
 BuildRequires: clang
 BuildRequires: clang-tools-extra
@@ -1808,7 +1806,6 @@ fi
 %dir %{chromium_path}/PrivacySandboxAttestationsPreloaded/
 %config(noreplace) %{_sysconfdir}/%{name}/chromium.conf
 %config %{_sysconfdir}/%{name}/master_preferences
-%config %{_sysconfdir}/%{name}/policies/managed/disable-ai.json
 %{_bindir}/chromium-browser
 %{chromium_path}/chrome_*.pak
 %{chromium_path}/chrome_crashpad_handler
@@ -1928,6 +1925,17 @@ fi
 %endif
 
 %changelog
+* Mon Jul 20 2026 Than Ngo <than@redhat.com> - 150.0.7871.128-1
+- Update to 150.0.7871.128
+  * CVE-2026-15899: Use after free in CameraCapture
+  * CVE-2026-15900: Use after free in GPU
+  * CVE-2026-15901: Use after free in Network
+  * CVE-2026-15902: Use after free in Cast
+  * CVE-2026-15903: Out of bounds read and write in V8
+  * CVE-2026-15904: Use after free in Ozone
+  * CVE-2026-15905: Use after free in Aura
+- Fix rhbz#2501811, Drop AI policy which breaks DoH settings
+
 * Wed Jul 15 2026 Fedora Release Engineering <releng@fedoraproject.org> - 150.0.7871.124-2
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_45_Mass_Rebuild
 
