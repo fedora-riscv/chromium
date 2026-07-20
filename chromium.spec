@@ -1229,9 +1229,7 @@ Qt6 UI for chromium.
 %patch -P418 -p1 -b .0002-regenerate-xnn-buildgn
 %patch -P419 -p1 -b .0009-sandbox-ignore-byte-span-error
 %patch -P420 -p1 -b .0005-blink-add-audio-vector-support
-%if 0%{?fedora} > 44 || 0%{?rhel} > 10 
 %patch -P450 -p1 -b .pt_regs-kernel-7.2.0
-%endif
 %endif
 
 %if 0%{?flatpak}
@@ -1756,9 +1754,6 @@ popd
 # Add directories for policy management
 mkdir -p %{buildroot}%{_sysconfdir}/chromium/policies/managed
 mkdir -p %{buildroot}%{_sysconfdir}/chromium/policies/recommended
-
-# disable AI
-cp -a %{SOURCE14} %{buildroot}%{_sysconfdir}/chromium/policies/managed/
 
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
 cp -a chrome/app/theme/chromium/product_logo_256.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/chromium-browser.png
