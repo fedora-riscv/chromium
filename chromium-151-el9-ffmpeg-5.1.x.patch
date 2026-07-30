@@ -1,10 +1,10 @@
-diff -up chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.cc.el9-ffmpeg-5.1.x chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.cc
---- chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.cc.el9-ffmpeg-5.1.x	2025-11-01 22:14:10.116779876 +0100
-+++ chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.cc	2025-11-01 22:14:10.134140132 +0100
-@@ -800,8 +803,13 @@ bool AVStreamToVideoDecoderConfig(const
-   }
+diff -up chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.cc.el9-ffmpeg-5.1.x chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.cc
+--- chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.cc.el9-ffmpeg-5.1.x	2026-07-28 09:45:19.770842992 +0200
++++ chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.cc	2026-07-28 10:23:29.074215304 +0200
+@@ -770,8 +770,13 @@ bool AVStreamToVideoDecoderConfig(const
  
    VideoTransformation video_transformation = VideoTransformation();
+   VideoSpatialFormat spatial_format;
 +#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(60, 31, 102)
 +  for (int i = 0; i < stream->nb_side_data; i++) {
 +    const auto& side_data = stream->side_data[i];
@@ -14,11 +14,11 @@ diff -up chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.cc.el9-ffmpeg-5.1.x c
 +#endif
      switch (side_data.type) {
        case AV_PKT_DATA_DISPLAYMATRIX: {
-         CHECK_EQ(side_data.size, sizeof(int32_t) * 3 * 3);
-diff -up chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.h.el9-ffmpeg-5.1.x chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.h
---- chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.h.el9-ffmpeg-5.1.x	2025-10-24 18:42:30.000000000 +0200
-+++ chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.h	2025-11-02 08:06:48.997329630 +0100
-@@ -111,9 +111,13 @@ inline base::span<AVPacketSideData> AVCo
+         constexpr size_t kNumElements = 3 * 3;
+diff -up chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.h.el9-ffmpeg-5.1.x chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.h
+--- chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.h.el9-ffmpeg-5.1.x	2026-07-22 01:20:22.000000000 +0200
++++ chromium-151.0.7922.47/media/ffmpeg/ffmpeg_common.h	2026-07-28 09:45:19.771816742 +0200
+@@ -119,9 +119,13 @@ inline base::span<AVPacketSideData> AVCo
    // https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html#a29643cfd94231e2d148a5d17b08d115b
    // ffmpeg documentation: `nb_coded_side_data` is the amount of entries in
    // `coded_side_data`.
@@ -31,10 +31,10 @@ diff -up chromium-142.0.7444.59/media/ffmpeg/ffmpeg_common.h.el9-ffmpeg-5.1.x ch
 +#endif
  }
  
- // Converts an int64_t timestamp in |time_base| units to a base::TimeDelta.
-diff -up chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc.el9-ffmpeg-5.1.x chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc
---- chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc.el9-ffmpeg-5.1.x	2025-10-24 18:42:30.000000000 +0200
-+++ chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc	2025-11-01 22:14:10.124748634 +0100
+ inline base::span<uint8_t> AVCodecParametersExtraDataToSpan(
+diff -up chromium-151.0.7922.47/media/filters/audio_video_metadata_extractor.cc.el9-ffmpeg-5.1.x chromium-151.0.7922.47/media/filters/audio_video_metadata_extractor.cc
+--- chromium-151.0.7922.47/media/filters/audio_video_metadata_extractor.cc.el9-ffmpeg-5.1.x	2026-07-22 01:20:22.000000000 +0200
++++ chromium-151.0.7922.47/media/filters/audio_video_metadata_extractor.cc	2026-07-28 09:45:19.771952981 +0200
 @@ -109,17 +109,33 @@ bool AudioVideoMetadataExtractor::Extrac
    container_info.type = format_context->iformat->name;
    ExtractDictionary(format_context->metadata, &container_info.tags);
@@ -67,9 +67,9 @@ diff -up chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc.
      for (const auto& sd : AVCodecParametersCodedSideToSpan(stream->codecpar)) {
 +#endif
        if (sd.type == AV_PKT_DATA_DISPLAYMATRIX) {
-         CHECK_EQ(sd.size, sizeof(int32_t) * 3 * 3);
-         rotation_ = VideoTransformation::FromFFmpegDisplayMatrix(
-@@ -135,7 +151,11 @@ bool AudioVideoMetadataExtractor::Extrac
+         constexpr size_t kNumElements = 3 * 3;
+         CHECK_EQ(sd.size, sizeof(int32_t) * kNumElements);
+@@ -143,7 +159,11 @@ bool AudioVideoMetadataExtractor::Extrac
      ExtractDictionary(stream->metadata, &info.tags);
  
      if (!stream->codecpar) {
@@ -81,7 +81,7 @@ diff -up chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc.
      }
  
      info.type = avcodec_get_name(stream->codecpar->codec_id);
-@@ -158,7 +178,11 @@ bool AudioVideoMetadataExtractor::Extrac
+@@ -166,7 +186,11 @@ bool AudioVideoMetadataExtractor::Extrac
            reinterpret_cast<const char*>(stream->attached_pic.data),
            stream->attached_pic.size);
      }
@@ -93,9 +93,9 @@ diff -up chromium-142.0.7444.59/media/filters/audio_video_metadata_extractor.cc.
  
    extracted_ = true;
    return true;
-diff -up chromium-142.0.7444.59/media/filters/media_file_checker.cc.el9-ffmpeg-5.1.x chromium-142.0.7444.59/media/filters/media_file_checker.cc
---- chromium-142.0.7444.59/media/filters/media_file_checker.cc.el9-ffmpeg-5.1.x	2025-10-24 18:42:30.000000000 +0200
-+++ chromium-142.0.7444.59/media/filters/media_file_checker.cc	2025-11-01 22:14:10.125099595 +0100
+diff -up chromium-151.0.7922.47/media/filters/media_file_checker.cc.el9-ffmpeg-5.1.x chromium-151.0.7922.47/media/filters/media_file_checker.cc
+--- chromium-151.0.7922.47/media/filters/media_file_checker.cc.el9-ffmpeg-5.1.x	2026-07-22 01:20:22.000000000 +0200
++++ chromium-151.0.7922.47/media/filters/media_file_checker.cc	2026-07-28 09:45:19.772063149 +0200
 @@ -64,6 +64,10 @@ bool MediaFileChecker::Start(base::TimeD
    // Remember the codec context for any decodable audio or video streams.
    bool found_streams = false;
