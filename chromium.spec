@@ -1078,7 +1078,9 @@ Qt6 UI for chromium.
 %endif
 
 %patch -P23 -p1 -R -b .revert-libpng_for_testonly
+%if 0%{?fedora} || 0%{?rhel} && 0%{?rhel} > 10
 %patch -P24 -p1 -b .glibc-2.42-baud-rate-fix
+%endif
 %patch -P31 -p1 -b .disable-enterprise_companion_integration_tests
 
 %if ! %{bundlebrotli}
