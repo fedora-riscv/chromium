@@ -1354,6 +1354,9 @@ export CFLAGS
 export CXXFLAGS
 export LDFLAGS
 
+# Suppress linker_messages Warnings in Rust
+export RUSTFLAGS="-A linker_messages"
+
 # need for error: the option `Z` is only accepted on the nightly compiler
 export RUSTC_BOOTSTRAP=1
 
