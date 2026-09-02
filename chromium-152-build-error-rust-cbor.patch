@@ -1,0 +1,21 @@
+diff -up chromium-152.0.7977.75/components/cbor/BUILD.gn.me chromium-152.0.7977.75/components/cbor/BUILD.gn
+--- chromium-152.0.7977.75/components/cbor/BUILD.gn.me	2026-09-02 12:24:26.349525915 +0700
++++ chromium-152.0.7977.75/components/cbor/BUILD.gn	2026-09-02 12:34:26.504803212 +0700
+@@ -37,7 +37,7 @@ component("cbor") {
+     "//base",
+   ]
+ 
+-  if (!is_cronet_build) {
++  if (false) {
+     public_deps = [
+       "//build/rust/crubit",
+       "//components/cbor/rust:cbor_rust_bindings",
+@@ -63,7 +63,7 @@ source_set("unit_tests") {
+     "//testing/gtest",
+     "//third_party/fuzztest",
+   ]
+-  if (!is_cronet_build) {
++  if (false) {
+     deps += [ "//components/cbor/rust:cbor_rust_unittests" ]
+   }
+ 
