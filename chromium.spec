@@ -406,7 +406,7 @@ Patch315: chromium-145-rustc-ftbfs.patch
 # llvm <= 22
 # clang++: error: unknown argument: '-fno-lifetime-dse'
 # unknown warning option -Wno-nontrivial-memcall
-Patch316: chromium-151-clang++-unknown-argument.patch
+Patch316: chromium-152-clang++-unknown-argument.patch
 
 Patch318: memory-allocator-dcheck-assert-fix.patch
 
