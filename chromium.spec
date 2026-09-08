@@ -272,7 +272,7 @@
 
 Name:	chromium
 Version: 152.0.7977.82
-Release: 1%{?dist}
+Release: 1.rv64%{?dist}
 Summary: A WebKit (Blink) powered web browser that Google doesn't want you to use
 Url: http://www.chromium.org/Home
 License: BSD-3-Clause AND LGPL-2.1-or-later AND Apache-2.0 AND IJG AND MIT AND GPL-2.0-or-later AND ISC AND OpenSSL AND (MPL-1.1 OR GPL-2.0-only OR LGPL-2.0-only)
@@ -528,6 +528,12 @@ Patch511: 0001-fips-disable-options.patch
 # remove rollup binary, build with wasm-rollup 
 Patch520: build-with-wasm-rollup.patch
 Patch521: disable-ai.patch
+
+# RISC-V 64 bit support patches
+Patch601: riscv64-build.patch
+Patch602: Debian-fix-rust-linking.patch
+Patch603: riscv-sandbox-142.patch
+Patch604: riscv-ffmpeg-140.patch
 
 # Upstream patches
 
@@ -899,7 +905,7 @@ Requires: u2f-hidraw-policy
 
 Requires: chromium-common%{_isa} = %{version}-%{release}
 
-ExclusiveArch: x86_64 aarch64 ppc64le
+ExclusiveArch: x86_64 aarch64 ppc64le riscv64
 
 # Bundled bits (I'm sure I've missed some)
 Provides: bundled(bintrees) = 1.0.1
@@ -1244,6 +1250,13 @@ Qt6 UI for chromium.
 %patch -P520 -p1 -b .build-with-wasm-rollup
 %patch -P521 -p1 -b .disable-ai
 
+%ifarch riscv64
+%patch -P601 -p1 -b .riscv-build
+%patch -P602 -p0 -b .Debian-fix-rust-linking
+%patch -P603 -p1 -b .riscv-sandbox-142
+%patch -P604 -p1 -d third_party/ffmpeg -b .riscv-ffmpeg-140
+%endif
+
 # Upstream patches
 
 # Change shebang in all relevant files in this directory and all subdirectories
@@ -1255,7 +1268,18 @@ mkdir -p third_party/node/linux/node-linux-x64/bin
 %if ! %{system_nodejs}
   ln -s ../../../../../node-%{nodejs_version}/node third_party/node/linux/node-linux-x64/bin/node
 %else
+%ifarch riscv64
+  # @rollup/wasm-node (Patch520) traps with "RuntimeError: unreachable" in
+  # TurboFan-compiled wasm on riscv64 nodejs (V8). Force the Liftoff baseline
+  # wasm compiler via a wrapper script to work around it.
+  cat > third_party/node/linux/node-linux-x64/bin/node <<'EOF'
+#!/bin/sh
+exec /usr/bin/node --liftoff-only "$@"
+EOF
+  chmod +x third_party/node/linux/node-linux-x64/bin/node
+%else
   ln -s $(which node) third_party/node/linux/node-linux-x64/bin/node
+%endif
 %endif
 
 # Add correct path for esbuild binary
@@ -1422,6 +1446,10 @@ CHROMIUM_CORE_GN_DEFINES+=' target_cpu="arm64"'
 
 %ifarch ppc64le
 CHROMIUM_CORE_GN_DEFINES+=' target_cpu="ppc64"'
+%endif
+
+%ifarch riscv64
+CHROMIUM_CORE_GN_DEFINES+=' target_cpu="riscv64"'
 %endif
 
 CHROMIUM_CORE_GN_DEFINES+=' icu_use_data_file=true'
@@ -1699,7 +1727,7 @@ pushd %{chromebuilddir}
 %if %{build_chrome_management_service}
 	cp -a chrome_management_service %{buildroot}%{chromium_path}/chrome-management-service
 %endif
-	%ifarch x86_64 aarch64 ppc64le
+	%ifarch x86_64 aarch64 ppc64le riscv64
 		cp -a libvk_swiftshader.so %{buildroot}%{chromium_path}
 		cp -a libvulkan.so.1 %{buildroot}%{chromium_path}
 		cp -a vk_swiftshader_icd.json %{buildroot}%{chromium_path}
@@ -1918,6 +1946,19 @@ fi
 %endif
 
 %changelog
+* Tue Sep 08 2026 Liu Yang <yang.liu.sn@gmail.com> - 152.0.7977.82-1.rv64
+- Add riscv64 support for Fedora 44
+- Add riscv64 to ExclusiveArch
+- Set target_cpu="riscv64" on riscv64
+- Carry riscv64 patch set from f43-rv64
+  * Apply Patch601-Patch604 on riscv64
+  * riscv64-build.patch (Patch601): use clang runtime lib dir riscv64-redhat-linux-gnu
+  * Debian-fix-rust-linking.patch (Patch602): use -Wl,--start-group/--end-group for riscv64 links; refresh for 152
+  * riscv-sandbox-142.patch (Patch603): add openSUSE seccomp-bpf sandbox for riscv64; refresh for 152
+  * riscv-ffmpeg-140.patch (Patch604): add pregenerated ffmpeg config for linux/riscv64
+  * Install SwiftShader/Vulkan files on riscv64
+  * Use --liftoff-only for node on riscv64 to avoid V8 TurboFan wasm trap with @rollup/wasm-node (Patch520)
+
 * Sat Sep 05 2026 Than Ngo <than@redhat.com> - 152.0.7977.82-1
 - Update to 152.0.7977.82
   * CVE-2026-85046: Type confusion in V8
